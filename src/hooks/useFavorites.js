@@ -17,15 +17,26 @@ const useFavorites = (type) => {
         const savedCreds = localStorage.getItem('iptv_credentials');
         if (!savedCreds) return null;
         const { username, url } = JSON.parse(savedCreds);
-        // Create a safe ID: username + hash of url, or just simple concatenation if safe characters
-        // Simple sanitization: replace non-alphanumeric with _
-        const sanitizedUrl = url.replace(/[^a-zA-Z0-9]/g, '_');
+
+        // Normalize URL: remove protocol (http/https) and trailing slashes to ensure same ID across devices
+        const normalizedUrl = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        // Create safe ID: username + sanitized url
+        const sanitizedUrl = normalizedUrl.replace(/[^a-zA-Z0-9]/g, '_');
         return `${username}_${sanitizedUrl}`;
     };
 
     useEffect(() => {
         const userId = getUserId();
-        if (!userId || !db) return;
+        if (!userId) {
+            console.warn("Firebase Sync: No User ID found (not logged in?)");
+            return;
+        }
+        if (!db) {
+            console.error("Firebase Sync: Database not initialized. Check firebase.js config.");
+            return;
+        }
+
+        console.log(`Firebase Sync: Subscribing to updates for user ${userId}`);
 
         // Subscribe to Firestore changes
         try {

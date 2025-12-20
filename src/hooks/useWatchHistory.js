@@ -9,7 +9,9 @@ const useWatchHistory = () => {
         const savedCreds = localStorage.getItem('iptv_credentials');
         if (!savedCreds) return null;
         const { username, url } = JSON.parse(savedCreds);
-        const sanitizedUrl = url.replace(/[^a-zA-Z0-9]/g, '_');
+        // Normalize URL: remove protocol (http/https) and trailing slashes to ensure same ID across devices
+        const normalizedUrl = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        const sanitizedUrl = normalizedUrl.replace(/[^a-zA-Z0-9]/g, '_');
         return `${username}_${sanitizedUrl}`;
     };
 
