@@ -5,7 +5,7 @@ import {
     SkipBack, SkipForward, PictureInPicture2
 } from 'lucide-react';
 
-const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0 }) => {
+const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onNext, onPrev }) => {
     const videoRef = useRef(null);
     const containerRef = useRef(null);
     const hlsRef = useRef(null);
@@ -195,7 +195,10 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0 }) =
                         setBuffering(false);
                     }}
                     onPause={() => setPlaying(false)}
-                    onEnded={() => setPlaying(false)}
+                    onEnded={() => {
+                        setPlaying(false);
+                        if (onNext) onNext();
+                    }}
                 />
 
                 {/* Play/Pause Overlay Animation */}
@@ -227,9 +230,28 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0 }) =
 
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                            <button onClick={togglePlay} className="text-white hover:text-blue-400 transition-colors">
-                                {playing ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
-                            </button>
+                            {/* Navigation Controls */}
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={onPrev}
+                                    disabled={!onPrev}
+                                    className={`text-white transition-colors ${!onPrev ? 'opacity-30 cursor-not-allowed' : 'hover:text-blue-400'}`}
+                                >
+                                    <SkipBack size={24} fill="currentColor" />
+                                </button>
+
+                                <button onClick={togglePlay} className="text-white hover:text-blue-400 transition-colors">
+                                    {playing ? <Pause size={32} fill="currentColor" /> : <Play size={32} fill="currentColor" />}
+                                </button>
+
+                                <button
+                                    onClick={onNext}
+                                    disabled={!onNext}
+                                    className={`text-white transition-colors ${!onNext ? 'opacity-30 cursor-not-allowed' : 'hover:text-blue-400'}`}
+                                >
+                                    <SkipForward size={24} fill="currentColor" />
+                                </button>
+                            </div>
 
                             <div className="flex items-center gap-2 group/vol">
                                 <button onClick={toggleMute} className="text-white hover:text-blue-400 transition-colors">

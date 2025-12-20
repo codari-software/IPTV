@@ -42,30 +42,75 @@ const SeriesModal = ({ series, onClose }) => {
         fetchData();
     }, [series]);
 
-    const handleEpisodeClick = (episode) => {
+    const getAdjacentEpisode = (currentEp, direction) => {
+        if (!currentEp || !selectedSeason) return null;
+        const seasonNum = parseInt(selectedSeason);
+        const epList = episodes[selectedSeason];
+        const currentIndex = epList.findIndex(e => e.id === currentEp.id);
+
+        // Same season navigation
+        if (direction === 'next' && currentIndex < epList.length - 1) {
+            return epList[currentIndex + 1];
+        }
+        if (direction === 'prev' && currentIndex > 0) {
+            return epList[currentIndex - 1];
+        }
+
+        // Cross season navigation
+        if (direction === 'next') {
+            const nextSeason = seasons.find(s => parseInt(s) > seasonNum); // simplistic check
+            // Better to sort seasons numerically to find true next 
+            const sortedSeasons = [...seasons].sort((a, b) => parseInt(a) - parseInt(b));
+            const nextSeasonNum = sortedSeasons.find(s => parseInt(s) > seasonNum);
+            if (nextSeasonNum && episodes[nextSeasonNum]?.length > 0) {
+                return episodes[nextSeasonNum][0];
+            }
+        }
+
+        return null;
+    };
+
+    const playEpisode = (episode, season = null) => {
+        if (!episode) return;
         const savedCreds = localStorage.getItem('iptv_credentials');
         if (!savedCreds) return;
         const { url, username, password } = JSON.parse(savedCreds);
 
-        // Series episode extension usually follows container_extension of the episode info
+        const currentSeason = season || selectedSeason || episode.season;
         const extension = episode.container_extension || 'mp4';
         const streamUrl = `${url}/series/${username}/${password}/${episode.id}.${extension}`;
 
+        // Update selected season if traversing
+        if (currentSeason !== selectedSeason) {
+            setSelectedSeason(String(currentSeason));
+        }
+
         console.log("Playing Series Episode:", streamUrl);
-        setPlayingEpisode({ ...episode, url: streamUrl });
+        setPlayingEpisode({ ...episode, url: streamUrl, season: currentSeason });
     };
+
+    // Replace the old simple handleEpisodeClick with this
+    const handleEpisodeClick = (episode) => playEpisode(episode);
 
     return (
         <div className="fixed inset-0 z-40 bg-black/90 flex flex-col items-center justify-center p-4">
             {playingEpisode && (
                 <PlayerModal
                     streamUrl={playingEpisode.url}
-                    title={`${series.name} - S${selectedSeason || playingEpisode.season} E${playingEpisode.episode_num}`}
+                    title={`${series.name} - S${playingEpisode.season} E${playingEpisode.episode_num} - ${playingEpisode.title}`}
                     startTime={playingEpisode.startTime || 0}
                     onClose={() => setPlayingEpisode(null)}
+                    onNext={() => {
+                        const nextEp = getAdjacentEpisode(playingEpisode, 'next');
+                        if (nextEp) playEpisode(nextEp);
+                    }}
+                    onPrev={() => {
+                        const prevEp = getAdjacentEpisode(playingEpisode, 'prev');
+                        if (prevEp) playEpisode(prevEp);
+                    }}
                     onProgress={(time, duration) => {
                         saveProgress(series.series_id, {
-                            season: selectedSeason || playingEpisode.season, // Use detected season if selectedSeason is unavailable (e.g. from Resume button)
+                            season: playingEpisode.season,
                             episode: playingEpisode.episode_num,
                             episodeId: playingEpisode.id,
                             timestamp: time,
