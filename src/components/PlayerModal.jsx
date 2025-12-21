@@ -19,7 +19,10 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [showControls, setShowControls] = useState(true);
     const [buffering, setBuffering] = useState(true);
-    const [playbackRate, setPlaybackRate] = useState(1);
+    const [playbackRate, setPlaybackRate] = useState(() => {
+        const saved = localStorage.getItem('playerSpeed');
+        return saved ? parseFloat(saved) : 1;
+    });
     const [showSpeedMenu, setShowSpeedMenu] = useState(false);
     const [initialSetup, setInitialSetup] = useState(true);
 
@@ -132,6 +135,7 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
         const video = videoRef.current;
         video.playbackRate = rate;
         setPlaybackRate(rate);
+        localStorage.setItem('playerSpeed', rate);
         setShowSpeedMenu(false);
     };
 
@@ -188,6 +192,8 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
                         }
                         setBuffering(false);
                         setInitialSetup(false);
+                        // Apply persisted speed
+                        videoRef.current.playbackRate = playbackRate;
                     }}
                     onWaiting={() => setBuffering(true)}
                     onPlaying={() => {
