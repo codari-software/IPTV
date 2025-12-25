@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { getSeriesInfo } from '../services/api';
 import PlayerModal from './PlayerModal';
 import useWatchHistory from '../hooks/useWatchHistory';
@@ -12,6 +12,7 @@ const SeriesModal = ({ series, onClose }) => {
     const [loading, setLoading] = useState(true);
     const [playingEpisode, setPlayingEpisode] = useState(null);
     const { saveProgress, getProgress } = useWatchHistory();
+    const lastSaveTimeRef = useRef(0);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -58,7 +59,7 @@ const SeriesModal = ({ series, onClose }) => {
 
         // Cross season navigation
         if (direction === 'next') {
-            const nextSeason = seasons.find(s => parseInt(s) > seasonNum); // simplistic check
+
             // Better to sort seasons numerically to find true next 
             const sortedSeasons = [...seasons].sort((a, b) => parseInt(a) - parseInt(b));
             const nextSeasonNum = sortedSeasons.find(s => parseInt(s) > seasonNum);
@@ -87,6 +88,8 @@ const SeriesModal = ({ series, onClose }) => {
 
         console.log("Playing Series Episode:", streamUrl);
         setPlayingEpisode({ ...episode, url: streamUrl, season: currentSeason });
+        // Reset save timer when starting new episode so it saves immediately at start
+        lastSaveTimeRef.current = 0;
     };
 
     // Replace the old simple handleEpisodeClick with this
@@ -109,13 +112,18 @@ const SeriesModal = ({ series, onClose }) => {
                         if (prevEp) playEpisode(prevEp);
                     }}
                     onProgress={(time, duration) => {
-                        saveProgress(series.series_id, {
-                            season: playingEpisode.season,
-                            episode: playingEpisode.episode_num,
-                            episodeId: playingEpisode.id,
-                            timestamp: time,
-                            duration: duration
-                        });
+                        const now = Date.now();
+                        // Save every 10 seconds (10000 ms)
+                        if (now - lastSaveTimeRef.current >= 10000) {
+                            saveProgress(series.series_id, {
+                                season: playingEpisode.season,
+                                episode: playingEpisode.episode_num,
+                                episodeId: playingEpisode.id,
+                                timestamp: time,
+                                duration: duration
+                            });
+                            lastSaveTimeRef.current = now;
+                        }
                     }}
                 />
             )}
