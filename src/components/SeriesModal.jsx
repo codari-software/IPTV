@@ -44,10 +44,18 @@ const SeriesModal = ({ series, onClose }) => {
     }, [series]);
 
     const getAdjacentEpisode = (currentEp, direction) => {
-        if (!currentEp || !selectedSeason) return null;
-        const seasonNum = parseInt(selectedSeason);
-        const epList = episodes[selectedSeason];
+        // Use currentEp.season if available to prevent issues when selectedSeason is out of sync
+        const activeSeason = currentEp?.season ? String(currentEp.season) : selectedSeason;
+        if (!currentEp || !activeSeason) return null;
+
+        const seasonNum = parseInt(activeSeason);
+        const epList = episodes[activeSeason];
+
+        if (!epList) return null;
+
         const currentIndex = epList.findIndex(e => e.id === currentEp.id);
+
+        if (currentIndex === -1) return null;
 
         // Same season navigation
         if (direction === 'next' && currentIndex < epList.length - 1) {
