@@ -3,28 +3,28 @@ import { Heart } from 'lucide-react'; // Import Heart icon
 
 const CategoryList = ({ categories, selectedCategory, onSelect }) => {
     return (
-        <div className="w-64 bg-gray-900 border-r border-white/5 h-[calc(100vh-64px)] overflow-y-auto">
+        <div className="w-64 bg-gray-900 border-r border-white/5 h-full overflow-y-auto shrink-0">
             <div className="p-4">
-                <h3 className="text-gray-400 font-semibold mb-4 text-sm uppercase tracking-wider">Categories</h3>
+                <h3 className="text-gray-400 font-semibold mb-4 text-sm uppercase tracking-wider">Categorias</h3>
                 <div className="space-y-1">
                     <button
                         onClick={() => onSelect('favorites')}
                         className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors mb-2 flex items-center gap-2 ${selectedCategory === 'favorites'
-                                ? 'bg-red-600 text-white'
-                                : 'text-gray-300 hover:bg-white/5'
+                            ? 'bg-red-600 text-white'
+                            : 'text-gray-300 hover:bg-white/5'
                             }`}
                     >
                         <Heart size={16} className={selectedCategory === 'favorites' ? "fill-white" : ""} />
-                        Favorites
+                        Favoritos
                     </button>
                     <button
                         onClick={() => onSelect(null)}
                         className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedCategory === null
-                                ? 'bg-blue-600 text-white'
-                                : 'text-gray-300 hover:bg-white/5'
+                            ? 'bg-blue-600 text-white'
+                            : 'text-gray-300 hover:bg-white/5'
                             }`}
                     >
-                        All Channels
+                        Todos os Canais
                     </button>
                     {categories.map((cat) => (
                         <button

@@ -1,77 +1,102 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { useAuth } from '../contexts/AuthContext';
 
 const useWatchHistory = () => {
+    const { currentUser } = useAuth();
     const [history, setHistory] = useState({});
 
-    const getUserId = () => {
-        const savedCreds = localStorage.getItem('iptv_credentials');
-        if (!savedCreds) return null;
-        const { username, url } = JSON.parse(savedCreds);
-        // Normalize URL: remove protocol (http/https) and trailing slashes to ensure same ID across devices
-        const normalizedUrl = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
-        const sanitizedUrl = normalizedUrl.replace(/[^a-zA-Z0-9]/g, '_');
-        return `${username}_${sanitizedUrl}`;
-    };
-
     useEffect(() => {
-        // Load local first
-        const stored = localStorage.getItem('iptv_watch_history');
-        if (stored) {
-            setHistory(JSON.parse(stored));
-        }
-
-        const userId = getUserId();
-        if (!userId || !db) return;
-
-        // Sync with Firestore
-        try {
-            const unsub = onSnapshot(doc(db, "users", userId), (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    if (data.watch_history) {
-                        setHistory(data.watch_history);
-                        localStorage.setItem('iptv_watch_history', JSON.stringify(data.watch_history));
-                    }
-                }
-            }, (error) => {
-                console.warn("Firestore sync error (History):", error.message);
-            });
-            return () => unsub();
-        } catch (e) {
-            console.warn("Firestore init error:", e);
-        }
-    }, []);
-
-    const saveProgress = async (itemId, progressData) => {
-        // progressData: { season, episode, timestamp, duration, lastWatched: Date.now() }
-        const currentHistory = { ...history };
-
-        const updatedEntry = { ...progressData, lastWatched: Date.now() };
-        const updatedHistory = {
-            ...currentHistory,
-            [itemId]: updatedEntry
+        // Load initial local state to prevent flash of empty content
+        const loadLocal = () => {
+            try {
+                const local = localStorage.getItem('watch_history');
+                if (local) return JSON.parse(local);
+            } catch (e) {
+                console.error("Error loading local history:", e);
+            }
+            return {};
         };
 
-        // Optimistic update
-        setHistory(updatedHistory);
-        localStorage.setItem('iptv_watch_history', JSON.stringify(updatedHistory));
+        if (currentUser) {
+            // Authenticated: Sync with Firestore but Merge with Local
+            if (!db) return;
 
-        // Sync to cloud
-        const userId = getUserId();
-        if (userId && db) {
             try {
-                // Nested object updates in Firestore can be tricky with 'merge', 
-                // but for a map field 'watch_history', we usually want to update specific keys.
-                // However, setDoc with { watch_history: updatedHistory } replaces the whole map
-                // or we can use dot notation "watch_history.itemId" if we want atomic updates.
-                // For simplicity/safety, let's write the whole map for this user (personal app).
-                await setDoc(doc(db, "users", userId), { watch_history: updatedHistory }, { merge: true });
+                const unsub = onSnapshot(doc(db, "users", currentUser.uid), (docSnap) => {
+                    let cloudData = {};
+                    if (docSnap.exists() && docSnap.data().watch_history) {
+                        cloudData = docSnap.data().watch_history;
+                    }
+
+                    // Smart Merge: Local vs Cloud
+                    const localData = loadLocal();
+                    const merged = { ...cloudData };
+
+                    Object.keys(localData).forEach(key => {
+                        const localItem = localData[key];
+                        const cloudItem = merged[key];
+                        // If local is newer or cloud doesn't have it, keep local
+                        if (!cloudItem || (localItem.lastWatched || 0) > (cloudItem.lastWatched || 0)) {
+                            merged[key] = localItem;
+                        }
+                    });
+
+                    setHistory(merged);
+                }, (error) => {
+                    console.warn("Firestore sync error:", error.message);
+                    setHistory(loadLocal()); // Fallback to local on error
+                });
+                return () => unsub();
             } catch (e) {
-                console.error("Error saving history to Firestore:", e);
+                console.warn("Firestore init error:", e);
+                setHistory(loadLocal());
             }
+        } else {
+            // Guest: LocalStorage Only
+            setHistory(loadLocal());
         }
+    }, [currentUser]);
+
+    const saveProgress = async (itemIdOrUpdates, progressData = null) => {
+        let updates = {};
+        if (typeof itemIdOrUpdates === 'object' && itemIdOrUpdates !== null) {
+            updates = itemIdOrUpdates;
+        } else {
+            updates = { [itemIdOrUpdates]: progressData };
+        }
+
+        // Add timestamps
+        const now = Date.now();
+        Object.keys(updates).forEach(key => {
+            updates[key] = { ...updates[key], lastWatched: now };
+        });
+
+        // Optimistically update state
+        setHistory(prevHistory => {
+            const newHistory = { ...prevHistory, ...updates };
+
+            // ALWAYS Save to LocalStorage (Act as persistent cache)
+            try {
+                localStorage.setItem('watch_history', JSON.stringify(newHistory));
+            } catch (e) {
+                console.error("Local save failed:", e);
+            }
+
+            // Sync to Cloud if authenticated
+            if (currentUser && db) {
+                const firestoreUpdates = {};
+                Object.keys(updates).forEach(key => {
+                    firestoreUpdates[`watch_history.${key}`] = updates[key];
+                });
+
+                setDoc(doc(db, "users", currentUser.uid), firestoreUpdates, { merge: true })
+                    .catch(e => console.error("Cloud save failed:", e));
+            }
+
+            return newHistory;
+        });
     };
 
     const getProgress = (itemId) => {

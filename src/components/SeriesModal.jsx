@@ -43,6 +43,17 @@ const SeriesModal = ({ series, onClose }) => {
         fetchData();
     }, [series]);
 
+    // Handle ESC key to close modal
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' && !playingEpisode) {
+                onClose();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [onClose, playingEpisode]);
+
     const getAdjacentEpisode = (currentEp, direction) => {
         // Use currentEp.season if available to prevent issues when selectedSeason is out of sync
         const activeSeason = currentEp?.season ? String(currentEp.season) : selectedSeason;
@@ -101,41 +112,27 @@ const SeriesModal = ({ series, onClose }) => {
     };
 
     // Replace the old simple handleEpisodeClick with this
+    const saveCurrentProgress = (time, duration) => {
+        if (!playingEpisode) return;
+        // Avoid saving if time is very close to 0 (unless we want to save "started")
+        // But for resume, 0 is fine.
+        const progressData = {
+            season: playingEpisode.season,
+            episode: playingEpisode.episode_num,
+            episodeId: playingEpisode.id,
+            timestamp: time,
+            duration: duration
+        };
+        saveProgress({
+            [series.series_id]: { ...progressData, type: 'series_resume' },
+            [String(playingEpisode.id)]: { ...progressData, type: 'episode_progress' }
+        });
+    };
+
     const handleEpisodeClick = (episode) => playEpisode(episode);
 
     return (
         <div className="fixed inset-0 z-40 bg-black/90 flex flex-col items-center justify-center p-4">
-            {playingEpisode && (
-                <PlayerModal
-                    streamUrl={playingEpisode.url}
-                    title={`${series.name} - S${playingEpisode.season} E${playingEpisode.episode_num} - ${playingEpisode.title}`}
-                    startTime={playingEpisode.startTime || 0}
-                    onClose={() => setPlayingEpisode(null)}
-                    onNext={() => {
-                        const nextEp = getAdjacentEpisode(playingEpisode, 'next');
-                        if (nextEp) playEpisode(nextEp);
-                    }}
-                    onPrev={() => {
-                        const prevEp = getAdjacentEpisode(playingEpisode, 'prev');
-                        if (prevEp) playEpisode(prevEp);
-                    }}
-                    onProgress={(time, duration) => {
-                        const now = Date.now();
-                        // Save every 10 seconds (10000 ms)
-                        if (now - lastSaveTimeRef.current >= 10000) {
-                            saveProgress(series.series_id, {
-                                season: playingEpisode.season,
-                                episode: playingEpisode.episode_num,
-                                episodeId: playingEpisode.id,
-                                timestamp: time,
-                                duration: duration
-                            });
-                            lastSaveTimeRef.current = now;
-                        }
-                    }}
-                />
-            )}
-
             <div className="bg-gray-900 w-full max-w-6xl max-h-[90vh] rounded-2xl overflow-hidden flex shadow-2xl border border-white/10 relative">
                 <button
                     onClick={onClose}
@@ -159,18 +156,17 @@ const SeriesModal = ({ series, onClose }) => {
                             />
                             <div>
                                 <h2 className="text-2xl font-bold text-white mb-2">{series.name}</h2>
-                                <p className="text-gray-400 text-sm leading-relaxed">{info?.plot || 'No description available.'}</p>
+                                <p className="text-gray-400 text-sm leading-relaxed">{info?.plot || 'Nenhuma descrição disponível.'}</p>
                             </div>
                             <div className="text-sm text-gray-500">
-                                <p>Release: {info?.releaseDate}</p>
-                                <p>Rating: {info?.rating}</p>
+                                <p>Lançamento: {info?.releaseDate}</p>
+                                <p>Avaliação: {info?.rating}</p>
                             </div>
                         </div>
 
                         {/* Seasons & Episodes */}
                         <div className="flex-1 bg-gray-900 p-6 overflow-y-auto">
-                            <h3 className="text-xl font-semibold mb-4 text-white">Seasons</h3>
-                            <h3 className="text-xl font-semibold mb-4 text-white">Seasons</h3>
+                            <h3 className="text-xl font-semibold mb-4 text-white">Temporadas</h3>
                             <div className="flex flex-wrap gap-2 mb-6">
                                 {/* Continue Button in Season List */}
                                 {(() => {
@@ -197,7 +193,7 @@ const SeriesModal = ({ series, onClose }) => {
                                                 className="px-4 py-2 rounded-lg text-sm font-bold transition-colors bg-blue-600 text-white hover:bg-blue-500 flex items-center gap-2"
                                             >
                                                 <Play size={14} fill="currentColor" />
-                                                Continue S{history.season}:E{history.episode}
+                                                Continuar T{history.season}:E{history.episode}
                                             </button>
                                         );
                                     }
@@ -211,40 +207,117 @@ const SeriesModal = ({ series, onClose }) => {
                                             : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                                             }`}
                                     >
-                                        Season {s}
+                                        Temporada {s}
                                     </button>
                                 ))}
                             </div>
 
-                            <h3 className="text-xl font-semibold mb-4 text-white">Episodes</h3>
+                            <h3 className="text-xl font-semibold mb-4 text-white">Episódios</h3>
                             <div className="space-y-2">
                                 {selectedSeason && episodes[selectedSeason]?.map(ep => (
                                     <div
                                         key={ep.id}
-                                        onClick={() => handleEpisodeClick(ep)}
-                                        className="flex items-center gap-4 p-3 bg-gray-800/50 hover:bg-gray-800 rounded-lg cursor-pointer group transition-colors"
+                                        onClick={() => {
+                                            // Check for history to resume
+                                            const history = getProgress(String(ep.id));
+                                            const startTime = history ? history.timestamp : 0;
+                                            playEpisode({ ...ep, startTime });
+                                        }}
+                                        className="flex gap-4 p-3 bg-gray-800/50 hover:bg-gray-800 rounded-lg cursor-pointer group transition-colors"
                                     >
-                                        <div className="w-8 h-8 flex items-center justify-center bg-white/10 rounded-full group-hover:bg-blue-600 transition-colors shrink-0">
-                                            <Play size={14} className="ml-1 text-white" />
+                                        {/* Episode Thumbnail */}
+                                        <div className="relative w-40 aspect-video bg-gray-900 rounded-md overflow-hidden shrink-0">
+                                            <img
+                                                src={ep.info?.movie_image || info?.cover || series.cover}
+                                                alt={ep.title}
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                loading="lazy"
+                                                onError={(e) => {
+                                                    e.target.src = 'https://via.placeholder.com/300x169/1f2937/6b7280?text=No+Preview';
+                                                }}
+                                            />
+                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="p-2 bg-white/20 backdrop-blur-sm rounded-full">
+                                                    <Play size={20} fill="white" className="text-white" />
+                                                </div>
+                                            </div>
+                                            {/* Duration tag */}
+                                            {ep.info?.duration && (
+                                                <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/80 rounded text-[10px] text-white">
+                                                    {ep.info.duration}
+                                                </div>
+                                            )}
+
+                                            {/* Progress Bar */}
+                                            {(() => {
+                                                const history = getProgress(String(ep.id));
+                                                if (history && history.duration > 0) {
+                                                    const pct = Math.min(100, Math.max(0, (history.timestamp / history.duration) * 100));
+                                                    return (
+                                                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-700/50">
+                                                            <div
+                                                                className="h-full bg-red-600"
+                                                                style={{ width: `${pct}%` }}
+                                                            />
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
                                         </div>
-                                        <div className="min-w-0">
-                                            <p className="text-white font-medium truncate">
-                                                {ep.episode_num}. {ep.title}
+
+                                        <div className="flex flex-col justify-center min-w-0 flex-1">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-sm font-semibold text-white">
+                                                    {ep.episode_num}.
+                                                </span>
+                                                <h4 className="text-sm font-medium text-white truncate">
+                                                    {ep.title}
+                                                </h4>
+                                            </div>
+                                            <p className="text-xs text-gray-400 line-clamp-2">
+                                                {ep.info?.plot || 'Nenhuma descrição disponível para este episódio.'}
                                             </p>
-                                        </div>
-                                        <div className="ml-auto text-xs text-gray-500">
-                                            {ep.container_extension}
                                         </div>
                                     </div>
                                 ))}
                                 {(!selectedSeason || !episodes[selectedSeason]) && (
-                                    <p className="text-gray-500">No episodes available.</p>
+                                    <p className="text-gray-500">Nenhum episódio disponível.</p>
                                 )}
                             </div>
                         </div>
                     </div>
                 )}
             </div>
+            {playingEpisode && (
+                <PlayerModal
+                    streamUrl={playingEpisode.url}
+                    title={`${series.name} - S${playingEpisode.season} E${playingEpisode.episode_num} - ${playingEpisode.title}`}
+                    startTime={playingEpisode.startTime || 0}
+                    onClose={(t, d) => {
+                        if (t !== undefined) saveCurrentProgress(t, d);
+                        setPlayingEpisode(null);
+                    }}
+                    onNext={(t, d) => {
+                        if (t !== undefined) saveCurrentProgress(t, d);
+                        const nextEp = getAdjacentEpisode(playingEpisode, 'next');
+                        if (nextEp) playEpisode(nextEp);
+                    }}
+                    onPrev={(t, d) => {
+                        if (t !== undefined) saveCurrentProgress(t, d);
+                        const prevEp = getAdjacentEpisode(playingEpisode, 'prev');
+                        if (prevEp) playEpisode(prevEp);
+                    }}
+                    onProgress={(time, duration) => {
+                        const now = Date.now();
+                        // Save every 10 seconds (10000 ms)
+                        if (now - lastSaveTimeRef.current >= 10000) {
+                            saveCurrentProgress(time, duration);
+                            lastSaveTimeRef.current = now;
+                        }
+                    }}
+                />
+            )}
         </div>
     );
 };

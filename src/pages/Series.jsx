@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useDeferredValue, useMemo } from 'react';
 import { getSeriesCategories, getSeries } from '../services/api';
 import CategoryList from '../components/CategoryList';
 import ContentGrid from '../components/ContentGrid';
@@ -14,8 +14,10 @@ const Series = () => {
     const [selectedCategory, setSelectedCategory] = useState(null);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const deferredQuery = useDeferredValue(searchQuery);
     const [selectedSeries, setSelectedSeries] = useState(null);
     const { toggleFavorite, isFavorite, getFavoritesByType } = useFavorites('series');
+    const activeCategoryRef = React.useRef(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -28,18 +30,20 @@ const Series = () => {
             const cats = await getSeriesCategories(url, username, password);
             setCategories(cats);
 
-
-
             // Optimization: Default to Favorites if available, otherwise first category
             const favorites = getFavoritesByType();
             if (favorites.length > 0) {
                 setSelectedCategory('favorites');
+                activeCategoryRef.current = 'favorites';
                 setSeriesList(favorites);
             } else if (cats.length > 0) {
                 const firstCatId = cats[0].category_id;
                 setSelectedCategory(firstCatId);
+                activeCategoryRef.current = firstCatId;
                 const streams = await getSeries(url, username, password, firstCatId);
-                setSeriesList(streams);
+                if (activeCategoryRef.current === firstCatId) {
+                    setSeriesList(streams);
+                }
             } else {
                 setSeriesList([]);
             }
@@ -51,23 +55,31 @@ const Series = () => {
 
     const handleCategorySelect = async (categoryId) => {
         setSelectedCategory(categoryId);
+        activeCategoryRef.current = categoryId;
         setLoading(true);
 
         if (categoryId === 'favorites') {
             const favs = getFavoritesByType();
-            setSeriesList(favs);
+            if (activeCategoryRef.current === categoryId) {
+                setSeriesList(favs);
+                setLoading(false);
+            }
         } else {
             const savedCreds = localStorage.getItem('iptv_credentials');
             const { url, username, password } = JSON.parse(savedCreds);
             const streams = await getSeries(url, username, password, categoryId);
-            setSeriesList(streams);
+            if (activeCategoryRef.current === categoryId) {
+                setSeriesList(streams);
+                setLoading(false);
+            }
         }
-        setLoading(false);
     };
 
-    const filteredSeries = seriesList.filter(s =>
-        s.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredSeries = useMemo(() => {
+        return seriesList.filter(s =>
+            s.name.toLowerCase().includes(deferredQuery.toLowerCase())
+        );
+    }, [seriesList, deferredQuery]);
 
     return (
         <div className="flex h-screen bg-gray-950 overflow-hidden">
@@ -106,6 +118,12 @@ const Series = () => {
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
+                        {/* Show small spinner if filtering is pending */}
+                        {searchQuery !== deferredQuery && (
+                            <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            </div>
+                        )}
                     </div>
                 </header>
 

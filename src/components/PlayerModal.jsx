@@ -5,7 +5,7 @@ import {
     SkipBack, SkipForward, PictureInPicture2
 } from 'lucide-react';
 
-const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onNext, onPrev }) => {
+const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onNext, onPrev, isLive = false }) => {
     const videoRef = useRef(null);
     const containerRef = useRef(null);
     const hlsRef = useRef(null);
@@ -148,6 +148,48 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
         }, 3000);
     };
 
+    // Keyboard Shortcuts
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (!videoRef.current) return;
+
+            switch (e.key) {
+                case ' ':
+                case 'k':
+                    e.preventDefault();
+                    if (videoRef.current.paused) videoRef.current.play();
+                    else videoRef.current.pause();
+                    handleMouseMove();
+                    break;
+                case 'ArrowRight':
+                case 'l':
+                    if (isLive) break; // Disable seek for live
+                    e.preventDefault();
+                    videoRef.current.currentTime = Math.min(videoRef.current.duration, videoRef.current.currentTime + 10);
+                    handleMouseMove();
+                    break;
+                case 'ArrowLeft':
+                case 'j':
+                    if (isLive) break; // Disable seek for live
+                    e.preventDefault();
+                    videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
+                    handleMouseMove();
+                    break;
+                case 'Escape':
+                    if (!document.fullscreenElement) {
+                        e.preventDefault();
+                        onClose(videoRef.current.currentTime, videoRef.current.duration);
+                    }
+                    break;
+                default:
+                    break;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [onClose, isLive]);
+
     return (
         <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4">
             <div
@@ -159,7 +201,7 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
                 {/* Header */}
                 <div className={`absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/90 to-transparent flex justify-between items-center z-20 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
                     <h3 className="text-white font-medium drop-shadow-md text-lg truncate max-w-[80%]">{title}</h3>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full text-white transition-colors">
+                    <button onClick={() => onClose(videoRef.current?.currentTime || 0, duration)} className="p-2 hover:bg-white/10 rounded-full text-white transition-colors">
                         <X size={24} />
                     </button>
                 </div>
@@ -192,8 +234,7 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
                         }
                         setBuffering(false);
                         setInitialSetup(false);
-                        // Apply persisted speed
-                        videoRef.current.playbackRate = playbackRate;
+                        if (!isLive) videoRef.current.playbackRate = playbackRate;
                     }}
                     onWaiting={() => setBuffering(true)}
                     onPlaying={() => {
@@ -203,7 +244,7 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
                     onPause={() => setPlaying(false)}
                     onEnded={() => {
                         setPlaying(false);
-                        if (onNext) onNext();
+                        if (onNext) onNext(duration, duration);
                     }}
                 />
 
@@ -218,45 +259,51 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
 
                 {/* Bottom Controls */}
                 <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-6 pb-6 pt-12 z-20 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
-                    {/* Progress Bar */}
-                    <div className="group/progress relative h-1.5 bg-white/20 rounded-full mb-4 cursor-pointer">
-                        <div
-                            className="absolute top-0 left-0 bottom-0 bg-blue-500 rounded-full"
-                            style={{ width: `${(currentTime / duration) * 100}%` }}
-                        />
-                        <input
-                            type="range"
-                            min="0"
-                            max={duration || 100}
-                            value={currentTime}
-                            onChange={handleSeek}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        />
-                    </div>
+                    {/* Progress Bar (Hidden for Live) */}
+                    {!isLive && (
+                        <div className="group/progress relative h-1.5 bg-white/20 rounded-full mb-4 cursor-pointer">
+                            <div
+                                className="absolute top-0 left-0 bottom-0 bg-blue-500 rounded-full"
+                                style={{ width: `${(currentTime / duration) * 100}%` }}
+                            />
+                            <input
+                                type="range"
+                                min="0"
+                                max={duration || 100}
+                                value={currentTime}
+                                onChange={handleSeek}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            />
+                        </div>
+                    )}
 
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                             {/* Navigation Controls */}
                             <div className="flex items-center gap-2">
-                                <button
-                                    onClick={onPrev}
-                                    disabled={!onPrev}
-                                    className={`text-white transition-colors ${!onPrev ? 'opacity-30 cursor-not-allowed' : 'hover:text-blue-400'}`}
-                                >
-                                    <SkipBack size={24} fill="currentColor" />
-                                </button>
+                                {!isLive && (
+                                    <button
+                                        onClick={() => onPrev && onPrev(videoRef.current?.currentTime || 0, duration)}
+                                        disabled={!onPrev}
+                                        className={`text-white transition-colors ${!onPrev ? 'opacity-30 cursor-not-allowed' : 'hover:text-blue-400'}`}
+                                    >
+                                        <SkipBack size={24} fill="currentColor" />
+                                    </button>
+                                )}
 
                                 <button onClick={togglePlay} className="text-white hover:text-blue-400 transition-colors">
                                     {playing ? <Pause size={32} fill="currentColor" /> : <Play size={32} fill="currentColor" />}
                                 </button>
 
-                                <button
-                                    onClick={onNext}
-                                    disabled={!onNext}
-                                    className={`text-white transition-colors ${!onNext ? 'opacity-30 cursor-not-allowed' : 'hover:text-blue-400'}`}
-                                >
-                                    <SkipForward size={24} fill="currentColor" />
-                                </button>
+                                {!isLive && (
+                                    <button
+                                        onClick={() => onNext && onNext(videoRef.current?.currentTime || 0, duration)}
+                                        disabled={!onNext}
+                                        className={`text-white transition-colors ${!onNext ? 'opacity-30 cursor-not-allowed' : 'hover:text-blue-400'}`}
+                                    >
+                                        <SkipForward size={24} fill="currentColor" />
+                                    </button>
+                                )}
                             </div>
 
                             <div className="flex items-center gap-2 group/vol">
@@ -277,35 +324,46 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
                             </div>
 
                             <div className="text-sm font-medium text-gray-300">
-                                <span>{formatTime(currentTime)}</span>
-                                <span className="mx-1 text-gray-500">/</span>
-                                <span>{formatTime(duration)}</span>
+                                {isLive ? (
+                                    <span className="flex items-center gap-2 text-red-500 font-bold animate-pulse">
+                                        <div className="w-2 h-2 bg-red-500 rounded-full" />
+                                        AO VIVO
+                                    </span>
+                                ) : (
+                                    <>
+                                        <span>{formatTime(currentTime)}</span>
+                                        <span className="mx-1 text-gray-500">/</span>
+                                        <span>{formatTime(duration)}</span>
+                                    </>
+                                )}
                             </div>
                         </div>
 
                         <div className="flex items-center gap-4">
-                            {/* Speed Control */}
-                            <div className="relative">
-                                <button
-                                    onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-                                    className="text-white hover:text-blue-400 transition-colors text-sm font-bold w-12"
-                                >
-                                    {playbackRate}x
-                                </button>
-                                {showSpeedMenu && (
-                                    <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-black/90 border border-white/10 rounded-lg p-2 flex flex-col gap-1 min-w-[80px]">
-                                        {[0.5, 1, 1.25, 1.5, 2].map(rate => (
-                                            <button
-                                                key={rate}
-                                                onClick={() => handleSpeedChange(rate)}
-                                                className={`text-sm py-1 px-2 rounded hover:bg-white/10 text-left ${playbackRate === rate ? 'text-blue-500 font-bold' : 'text-gray-300'}`}
-                                            >
-                                                {rate}x
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                            {/* Speed Control (Hidden for Live) */}
+                            {!isLive && (
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                                        className="text-white hover:text-blue-400 transition-colors text-sm font-bold w-12"
+                                    >
+                                        {playbackRate}x
+                                    </button>
+                                    {showSpeedMenu && (
+                                        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-black/90 border border-white/10 rounded-lg p-2 flex flex-col gap-1 min-w-[80px]">
+                                            {[0.5, 1, 1.25, 1.5, 2].map(rate => (
+                                                <button
+                                                    key={rate}
+                                                    onClick={() => handleSpeedChange(rate)}
+                                                    className={`text-sm py-1 px-2 rounded hover:bg-white/10 text-left ${playbackRate === rate ? 'text-blue-500 font-bold' : 'text-gray-300'}`}
+                                                >
+                                                    {rate}x
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {document.pictureInPictureEnabled && (
                                 <button onClick={togglePiP} className="text-white hover:text-blue-400 transition-colors" title="Miniplayer">

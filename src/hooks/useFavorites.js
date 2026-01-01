@@ -1,66 +1,38 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore'; // Removed getDoc as it was unused in original snippet or handled by onSnapshot
+import { useAuth } from '../contexts/AuthContext';
 
 const useFavorites = (type) => {
-    const [favorites, setFavorites] = useState(() => {
-        try {
-            const storedFavorites = localStorage.getItem('iptv_favorites');
-            return storedFavorites ? JSON.parse(storedFavorites) : [];
-        } catch (e) {
-            console.error("Error parsing favorites", e);
-            return [];
-        }
-    });
-
-    const getUserId = () => {
-        const savedCreds = localStorage.getItem('iptv_credentials');
-        if (!savedCreds) return null;
-        const { username, url } = JSON.parse(savedCreds);
-
-        // Normalize URL: remove protocol (http/https) and trailing slashes to ensure same ID across devices
-        const normalizedUrl = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
-        // Create safe ID: username + sanitized url
-        const sanitizedUrl = normalizedUrl.replace(/[^a-zA-Z0-9]/g, '_');
-        return `${username}_${sanitizedUrl}`;
-    };
+    const { currentUser } = useAuth();
+    const [favorites, setFavorites] = useState([]);
 
     useEffect(() => {
-        const userId = getUserId();
-        if (!userId) {
-            console.warn("Firebase Sync: No User ID found (not logged in?)");
-            return;
-        }
+        if (!currentUser) return;
         if (!db) {
-            console.error("Firebase Sync: Database not initialized. Check firebase.js config.");
+            console.error("Firebase Sync: Database not initialized.");
             return;
         }
 
-        console.log(`Firebase Sync: Subscribing to updates for user ${userId}`);
+        console.log(`Firebase Sync: Subscribing to updates for user ${currentUser.uid}`);
 
-        // Subscribe to Firestore changes
-        try {
-            const unsub = onSnapshot(doc(db, "users", userId), (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    if (data.favorites) {
-                        setFavorites(data.favorites);
-                        // Sync back to local storage
-                        localStorage.setItem('iptv_favorites', JSON.stringify(data.favorites));
-                    }
+        const unsub = onSnapshot(doc(db, "users", currentUser.uid), (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                if (data.favorites) {
+                    setFavorites(data.favorites);
                 }
-            }, (error) => {
-                // Ignore permission/config errors (user might not have set it up)
-                console.warn("Firestore sync error (Favorites):", error.message);
-            });
+            }
+        }, (error) => {
+            console.warn("Firestore sync error (Favorites):", error.message);
+        });
 
-            return () => unsub();
-        } catch (e) {
-            console.warn("Firestore init error:", e);
-        }
-    }, []);
+        return () => unsub();
+    }, [currentUser]);
 
     const toggleFavorite = async (item) => {
+        if (!currentUser) return;
+
         let newFavorites = [...favorites];
         const itemId = item.stream_id || item.series_id;
         const exists = newFavorites.find(f => (f.stream_id || f.series_id) === itemId);
@@ -73,14 +45,11 @@ const useFavorites = (type) => {
 
         // Optimistic update
         setFavorites(newFavorites);
-        localStorage.setItem('iptv_favorites', JSON.stringify(newFavorites));
 
         // Sync to Firestore
-        const userId = getUserId();
-        if (userId && db) {
+        if (db) {
             try {
-                // setDoc with merge to avoid overwriting watch history
-                await setDoc(doc(db, "users", userId), { favorites: newFavorites }, { merge: true });
+                await setDoc(doc(db, "users", currentUser.uid), { favorites: newFavorites }, { merge: true });
             } catch (e) {
                 console.error("Error saving favorites to Firestore:", e);
             }

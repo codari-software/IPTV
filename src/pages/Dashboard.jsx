@@ -1,20 +1,54 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Tv, Film, Clapperboard, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import ServerConnect from '../components/ServerConnect';
 
 const Dashboard = () => {
     const navigate = useNavigate();
+    const { logout, currentUser } = useAuth();
+    // AuthContext ensures localStorage is synced if user has settings
+    const [hasSettings, setHasSettings] = useState(() => !!localStorage.getItem('iptv_credentials'));
 
-    const handleLogout = () => {
-        localStorage.removeItem('iptv_credentials');
-        navigate('/login');
+    const handleLogout = async () => {
+        try {
+            await logout();
+            navigate('/login');
+        } catch (error) {
+            console.error("Failed to log out", error);
+        }
+    };
+
+    const handleConnectSuccess = (data) => {
+        localStorage.setItem('iptv_credentials', JSON.stringify({
+            ...data.credentials,
+            server_info: data.server_info
+        }));
+        setHasSettings(true);
     };
 
     const categories = [
-        { id: 'live', name: 'Live TV', icon: Tv, color: 'from-blue-500 to-cyan-500' },
-        { id: 'movies', name: 'Movies', icon: Film, color: 'from-purple-500 to-pink-500' },
-        { id: 'series', name: 'Series', icon: Clapperboard, color: 'from-orange-500 to-red-500' },
+        { id: 'live', name: 'TV Ao Vivo', icon: Tv, color: 'from-blue-500 to-cyan-500' },
+        { id: 'movies', name: 'Filmes', icon: Film, color: 'from-purple-500 to-pink-500' },
+        { id: 'series', name: 'Séries', icon: Clapperboard, color: 'from-orange-500 to-red-500' },
     ];
+
+    if (!hasSettings) {
+        return (
+            <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
+                <div className="absolute top-4 right-4">
+                    <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-white"
+                    >
+                        <LogOut size={18} />
+                        <span>Sair</span>
+                    </button>
+                </div>
+                <ServerConnect onConnect={handleConnectSuccess} />
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-950 p-6 text-white">
@@ -25,17 +59,22 @@ const Dashboard = () => {
                     </div>
                     <h1 className="text-2xl font-bold">IPTV Pro</h1>
                 </div>
-                <button
-                    onClick={handleLogout}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
-                >
-                    <LogOut size={18} />
-                    <span>Logout</span>
-                </button>
+                <div className="flex items-center gap-4">
+                    <div className="text-sm text-gray-400">
+                        {currentUser?.email}
+                    </div>
+                    <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+                    >
+                        <LogOut size={18} />
+                        <span>Sair</span>
+                    </button>
+                </div>
             </header>
 
             <div className="container mx-auto px-4">
-                <h2 className="text-3xl font-bold mb-8">What would you like to watch?</h2>
+                <h2 className="text-3xl font-bold mb-8">O que vamos assistir hoje?</h2>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {categories.map((cat) => (

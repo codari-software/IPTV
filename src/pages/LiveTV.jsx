@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useDeferredValue, useMemo } from 'react';
 import { getLiveCategories, getLiveStreams } from '../services/api';
 import CategoryList from '../components/CategoryList';
 import ContentGrid from '../components/ContentGrid';
@@ -14,8 +14,10 @@ const LiveTV = () => {
     const [selectedCategory, setSelectedCategory] = useState(null);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const deferredQuery = useDeferredValue(searchQuery);
     const [playingChannel, setPlayingChannel] = useState(null);
     const { toggleFavorite, isFavorite, getFavoritesByType } = useFavorites('live');
+    const activeCategoryRef = React.useRef(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -32,12 +34,18 @@ const LiveTV = () => {
             if (cats.length > 0) {
                 const firstCatId = cats[0].category_id;
                 setSelectedCategory(firstCatId);
+                activeCategoryRef.current = firstCatId;
                 const streams = await getLiveStreams(url, username, password, firstCatId);
-                setChannels(streams);
+                if (activeCategoryRef.current === firstCatId) {
+                    setChannels(streams);
+                }
             } else {
                 setChannels([]);
             }
 
+            // Only turn off loading if we are still matching (or just generally, but better safe)
+            // Ideally we only assume loading is done for *this* request. 
+            // But since this is mount, it's fine.
             setLoading(false);
         };
         fetchData();
@@ -45,24 +53,31 @@ const LiveTV = () => {
 
     const handleCategorySelect = async (categoryId) => {
         setSelectedCategory(categoryId);
+        activeCategoryRef.current = categoryId;
         setLoading(true);
 
         if (categoryId === 'favorites') {
             const favs = getFavoritesByType();
-            setChannels(favs);
+            if (activeCategoryRef.current === categoryId) {
+                setChannels(favs);
+                setLoading(false);
+            }
         } else {
             const savedCreds = localStorage.getItem('iptv_credentials');
             const { url, username, password } = JSON.parse(savedCreds);
             const streams = await getLiveStreams(url, username, password, categoryId);
-            setChannels(streams);
+            if (activeCategoryRef.current === categoryId) {
+                setChannels(streams);
+                setLoading(false);
+            }
         }
-
-        setLoading(false);
     };
 
-    const filteredChannels = channels.filter(ch =>
-        ch.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredChannels = useMemo(() => {
+        return channels.filter(ch =>
+            ch.name.toLowerCase().includes(deferredQuery.toLowerCase())
+        );
+    }, [channels, deferredQuery]);
 
     const handleChannelClick = (channel) => {
         const savedCreds = localStorage.getItem('iptv_credentials');
@@ -83,6 +98,7 @@ const LiveTV = () => {
                     streamUrl={playingChannel.url}
                     title={playingChannel.name}
                     onClose={() => setPlayingChannel(null)}
+                    isLive={true}
                 />
             )}
             <CategoryList
@@ -114,6 +130,12 @@ const LiveTV = () => {
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
+                        {/* Show small spinner if filtering is pending */}
+                        {searchQuery !== deferredQuery && (
+                            <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            </div>
+                        )}
                     </div>
                 </header>
 

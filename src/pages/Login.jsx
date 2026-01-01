@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Tv, User, Lock, Globe, ArrowRight, AlertCircle } from 'lucide-react'; // Added AlertCircle
-import { authenticate } from '../services/api';
+import { useNavigate, Link } from 'react-router-dom';
+import { Tv, User, Lock, ArrowRight, AlertCircle } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 const Login = () => {
     const [credentials, setCredentials] = useState({
-        url: '',
-        username: '',
+        email: '',
         password: '',
     });
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
-
+    const { login } = useAuth();
     const [error, setError] = useState('');
 
     const handleChange = (e) => {
@@ -24,17 +23,11 @@ const Login = () => {
         setLoading(true);
         setError('');
 
-        const result = await authenticate(credentials.url, credentials.username, credentials.password);
-
-        if (result.success) {
-            localStorage.setItem('iptv_credentials', JSON.stringify({
-                ...credentials,
-                url: result.serverUrl,
-                server_info: result.data.server_info
-            }));
+        try {
+            await login(credentials.email, credentials.password);
             navigate('/');
-        } else {
-            setError(result.message);
+        } catch (err) {
+            setError('Failed to log in: ' + err.message);
         }
         setLoading(false);
     };
@@ -47,9 +40,9 @@ const Login = () => {
                         <Tv size={32} />
                     </div>
                     <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                        Welcome Back
+                        Bem-vindo(a)
                     </h1>
-                    <p className="text-gray-400">Enter your Xtream Codes credentials</p>
+                    <p className="text-gray-400">Entre na sua conta para continuar</p>
                 </div>
 
                 {error && (
@@ -63,30 +56,15 @@ const Login = () => {
                     <div className="space-y-4">
                         <div className="relative group">
                             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-500 group-focus-within:text-blue-500 transition-colors">
-                                <Globe size={20} />
-                            </div>
-                            <input
-                                type="text"
-                                name="url"
-                                required
-                                placeholder="http://example.com:8080"
-                                className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
-                                value={credentials.url}
-                                onChange={handleChange}
-                            />
-                        </div>
-
-                        <div className="relative group">
-                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-500 group-focus-within:text-blue-500 transition-colors">
                                 <User size={20} />
                             </div>
                             <input
-                                type="text"
-                                name="username"
+                                type="email"
+                                name="email"
                                 required
-                                placeholder="Username"
+                                placeholder="Seu E-mail"
                                 className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
-                                value={credentials.username}
+                                value={credentials.email}
                                 onChange={handleChange}
                             />
                         </div>
@@ -99,7 +77,7 @@ const Login = () => {
                                 type="password"
                                 name="password"
                                 required
-                                placeholder="Password"
+                                placeholder="Sua Senha"
                                 className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
                                 value={credentials.password}
                                 onChange={handleChange}
@@ -116,10 +94,12 @@ const Login = () => {
                             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                         ) : (
                             <>
-                                Connect Server <ArrowRight size={20} />
+                                Entrar <ArrowRight size={20} />
                             </>
                         )}
                     </button>
+
+                    {/* Registration link removed as per requirement */}
                 </form>
             </div>
         </div>

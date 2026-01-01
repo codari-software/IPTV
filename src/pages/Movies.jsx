@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useDeferredValue, useMemo } from 'react';
 import { getVodCategories, getVodStreams } from '../services/api';
 import CategoryList from '../components/CategoryList';
 import ContentGrid from '../components/ContentGrid';
@@ -14,8 +14,10 @@ const Movies = () => {
     const [selectedCategory, setSelectedCategory] = useState(null);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const deferredQuery = useDeferredValue(searchQuery);
     const [playingMovie, setPlayingMovie] = useState(null);
     const { toggleFavorite, isFavorite, getFavoritesByType } = useFavorites('movie');
+    const activeCategoryRef = React.useRef(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -32,8 +34,11 @@ const Movies = () => {
             if (cats.length > 0) {
                 const firstCatId = cats[0].category_id;
                 setSelectedCategory(firstCatId);
+                activeCategoryRef.current = firstCatId;
                 const streams = await getVodStreams(url, username, password, firstCatId);
-                setMovies(streams);
+                if (activeCategoryRef.current === firstCatId) {
+                    setMovies(streams);
+                }
             } else {
                 setMovies([]);
             }
@@ -45,23 +50,31 @@ const Movies = () => {
 
     const handleCategorySelect = async (categoryId) => {
         setSelectedCategory(categoryId);
+        activeCategoryRef.current = categoryId;
         setLoading(true);
 
         if (categoryId === 'favorites') {
             const favs = getFavoritesByType();
-            setMovies(favs);
+            if (activeCategoryRef.current === categoryId) {
+                setMovies(favs);
+                setLoading(false);
+            }
         } else {
             const savedCreds = localStorage.getItem('iptv_credentials');
             const { url, username, password } = JSON.parse(savedCreds);
             const streams = await getVodStreams(url, username, password, categoryId);
-            setMovies(streams);
+            if (activeCategoryRef.current === categoryId) {
+                setMovies(streams);
+                setLoading(false);
+            }
         }
-        setLoading(false);
     };
 
-    const filteredMovies = movies.filter(m =>
-        m.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredMovies = useMemo(() => {
+        return movies.filter(m =>
+            m.name.toLowerCase().includes(deferredQuery.toLowerCase())
+        );
+    }, [movies, deferredQuery]);
 
     const handleMovieClick = (movie) => {
         const savedCreds = localStorage.getItem('iptv_credentials');
@@ -116,6 +129,12 @@ const Movies = () => {
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
+                        {/* Show small spinner if filtering is pending */}
+                        {searchQuery !== deferredQuery && (
+                            <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            </div>
+                        )}
                     </div>
                 </header>
 
