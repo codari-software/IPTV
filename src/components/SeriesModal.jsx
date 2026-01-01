@@ -72,7 +72,7 @@ const SeriesModal = ({ series, onClose }) => {
             const sortedSeasons = [...seasons].sort((a, b) => parseInt(a) - parseInt(b));
             const nextSeasonNum = sortedSeasons.find(s => parseInt(s) > seasonNum);
             if (nextSeasonNum && episodes[nextSeasonNum]?.length > 0) {
-                return episodes[nextSeasonNum][0];
+                return { ...episodes[nextSeasonNum][0], season: nextSeasonNum };
             }
         }
 
@@ -85,7 +85,7 @@ const SeriesModal = ({ series, onClose }) => {
         if (!savedCreds) return;
         const { url, username, password } = JSON.parse(savedCreds);
 
-        const currentSeason = season || selectedSeason || episode.season;
+        const currentSeason = season || episode.season || selectedSeason;
         const extension = episode.container_extension || 'mp4';
         const streamUrl = `${url}/series/${username}/${password}/${episode.id}.${extension}`;
 
