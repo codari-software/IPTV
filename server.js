@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import fetch from 'node-fetch';
+import axios from 'axios';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 8080;
 app.use(cors());
 app.use(express.json());
 
-// Proxy Endpoint (Substitui o Vercel Serverless Function)
+// Proxy Endpoint
 app.get('/api/proxy', async (req, res) => {
     const { url, ...queryParams } = req.query;
 
@@ -22,42 +22,36 @@ app.get('/api/proxy', async (req, res) => {
     }
 
     try {
-        const targetUrl = new URL(url);
-        Object.keys(queryParams).forEach(key => {
-            targetUrl.searchParams.append(key, queryParams[key]);
-        });
+        console.log(`[Proxy] Requesting: ${url}`);
 
-        console.log(`[Proxy] Forwarding to: ${targetUrl.toString()}`);
-
-        const response = await fetch(targetUrl.toString());
-
-        // Forward status
-        res.status(response.status);
-
-        // Forward content type
-        // Forward important headers
-        // CRITICAL: Do NOT forward content-length or content-encoding because node-fetch automatically decompresses response,
-        // changing the size. Letting Express calculate new length is safer.
-        const headersToForward = ['content-type', 'accept-ranges', 'access-control-allow-origin'];
-        headersToForward.forEach(header => {
-            const value = response.headers.get(header);
-            if (value) {
-                res.setHeader(header, value);
+        const response = await axios.get(url, {
+            params: queryParams,
+            responseType: 'stream',
+            validateStatus: () => true, // Forward all status codes
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
         });
 
-        // Use streaming instead of buffering (Critical for Video/Live TV)
-        if (response.body && typeof response.body.pipe === 'function') {
-            response.body.pipe(res);
-        } else {
-            // Fallback for non-stream bodies (older node-fetch versions or v3 web streams without adapter)
-            const buffer = await response.arrayBuffer();
-            res.send(Buffer.from(buffer));
-        }
+        // Forward Status
+        res.status(response.status);
+
+        // Forward Headers
+        const headersToForward = ['content-type', 'accept-ranges', 'access-control-allow-origin'];
+        Object.keys(response.headers).forEach(header => {
+            if (headersToForward.includes(header.toLowerCase())) {
+                res.setHeader(header, response.headers[header]);
+            }
+        });
+
+        // Pipe Data (Axios returns a Node Stream in 'data')
+        response.data.pipe(res);
 
     } catch (error) {
-        console.error('Proxy Error:', error);
-        res.status(500).json({ error: 'Failed to fetch data', details: error.message });
+        console.error('Proxy Error:', error.message);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Proxy Request Failed', details: error.message });
+        }
     }
 });
 
