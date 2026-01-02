@@ -36,11 +36,13 @@ app.get('/api/proxy', async (req, res) => {
 
         // Forward content type
         // Forward important headers
-        const headersToForward = ['content-type', 'content-length', 'accept-ranges'];
+        // CRITICAL: Do NOT forward content-length or content-encoding because node-fetch automatically decompresses response,
+        // changing the size. Letting Express calculate new length is safer.
+        const headersToForward = ['content-type', 'accept-ranges', 'access-control-allow-origin'];
         headersToForward.forEach(header => {
             const value = response.headers.get(header);
             if (value) {
-                res.setHeader(header.replace(/\b\w/g, l => l.toUpperCase()), value); // Normalize header case
+                res.setHeader(header, value);
             }
         });
 
@@ -48,7 +50,7 @@ app.get('/api/proxy', async (req, res) => {
         if (response.body && typeof response.body.pipe === 'function') {
             response.body.pipe(res);
         } else {
-            // Fallback for non-stream bodies (older node-fetch versions)
+            // Fallback for non-stream bodies (older node-fetch versions or v3 web streams without adapter)
             const buffer = await response.arrayBuffer();
             res.send(Buffer.from(buffer));
         }
