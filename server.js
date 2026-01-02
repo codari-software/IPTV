@@ -3,6 +3,7 @@ import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fetch from 'node-fetch';
+import axios from 'axios';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -13,7 +14,40 @@ const PORT = process.env.PORT || 8080;
 app.use(cors());
 app.use(express.json());
 
-// Proxy Endpoint (Substitui o Vercel Serverless Function)
+// Streaming Endpoint (Exclusive for Live TV)
+app.get('/api/stream', async (req, res) => {
+    const { url, ...queryParams } = req.query;
+    if (!url) return res.status(400).json({ error: 'Missing url' });
+
+    try {
+        console.log(`[Stream] Piping: ${url}`);
+        const response = await axios.get(url, {
+            params: queryParams,
+            responseType: 'stream',
+            validateStatus: () => true,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
+
+        res.status(response.status);
+
+        // Forward safe headers
+        const headers = ['content-type', 'accept-ranges', 'access-control-allow-origin'];
+        Object.keys(response.headers).forEach(key => {
+            if (headers.includes(key.toLowerCase())) {
+                res.setHeader(key, response.headers[key]);
+            }
+        });
+
+        response.data.pipe(res);
+    } catch (error) {
+        console.error('Stream Error:', error.message);
+        if (!res.headersSent) res.status(500).end();
+    }
+});
+
+// Proxy Endpoint (Kept original for VOD stability)
 app.get('/api/proxy', async (req, res) => {
     const { url, ...queryParams } = req.query;
 

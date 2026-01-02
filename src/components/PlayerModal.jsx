@@ -40,9 +40,18 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
 
         let playUrl = streamUrl;
 
-        // 1. Auto-upgrade to HTTPS if we are on a secure page (like Vercel)
-        // This solves the Mixed Content issue if the user's provider supports HTTPS but they logged in with HTTP.
-        if (window.location.protocol === 'https:' && playUrl.startsWith('http://')) {
+        // 1. PROXY HANDLING FOR LIVE TV
+        // If it sends 'http' and we are in browser, force our new Stream Endpoint
+        if (isLive && typeof window !== 'undefined' && playUrl.startsWith('http')) {
+            console.log("Routing LIVE stream through /api/stream");
+            // Use our new specific streaming endpoint
+            // Construct absolute path to ensure we hit the same origin
+            const currentOrigin = window.location.origin;
+            playUrl = `${currentOrigin}/api/stream?url=${encodeURIComponent(playUrl)}`;
+        }
+
+        // 2. HTTPS Upgrade (Legacy fallback for non-live)
+        else if (window.location.protocol === 'https:' && playUrl.startsWith('http://')) {
             console.log("Auto-upgrading HTTP stream to HTTPS for Vercel/Secure Context");
             playUrl = playUrl.replace('http://', 'https://');
         }
