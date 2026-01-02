@@ -39,11 +39,20 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
         setBuffering(true);
 
         let playUrl = streamUrl;
+
+        // 1. Auto-upgrade to HTTPS if we are on a secure page (like Vercel)
+        // This solves the Mixed Content issue if the user's provider supports HTTPS but they logged in with HTTP.
+        if (window.location.protocol === 'https:' && playUrl.startsWith('http://')) {
+            console.log("Auto-upgrading HTTP stream to HTTPS for Vercel/Secure Context");
+            playUrl = playUrl.replace('http://', 'https://');
+        }
+
+        // 2. Format conversion
         if (playUrl.endsWith('.ts')) {
             playUrl = playUrl.replace('.ts', '.m3u8');
         }
 
-        // Mixed Content Check (Heuristic)
+        // Mixed Content Check (Heuristic after upgrade attempt)
         const isMixedContent = window.location.protocol === 'https:' && playUrl.startsWith('http:');
 
         const isHls = playUrl.includes('.m3u8');
@@ -60,7 +69,9 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
                 if (data.fatal) {
                     console.error("HLS Fatal", data);
                     if (isMixedContent) {
-                        setError("Erro de Segurança: Navegadores bloqueiam canais HTTP em sites HTTPS (Vercel). Seu provedor IPTV precisa suportar HTTPS.");
+                        setError("Erro de Segurança: Navegador bloqueou conteúdo HTTP (Inseguro) em site HTTPS. Tente usar a versão HTTPS da sua lista.");
+                    } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                        setError("Erro de Conexão ou CORS. O servidor da sua lista pode estar bloqueando o acesso via Web (Vercel). Tente o App Desktop ou verifique se sua lista suporta Web Player (CORS).");
                     } else {
                         setError("Erro ao carregar o canal. Verifique sua conexão ou se o canal está offline.");
                     }
@@ -71,20 +82,11 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
             video.src = playUrl;
             video.play().catch((e) => {
                 console.log("HTML5 Play failed", e);
-                if (isMixedContent) {
-                    setError("Erro de Segurança: O navegador bloqueou este canal por ser HTTP (Não seguro) enquanto você está em um site HTTPS.");
-                } else {
-                    setError("Erro de reprodução. Formato não suportado ou erro de servidor.");
-                }
+                setError("Erro de reprodução. Formato não suportado ou erro de servidor.");
             });
 
-            // Add native error listener
             video.onerror = () => {
-                if (isMixedContent) {
-                    setError("Erro de Segurança: O navegador bloqueou este canal por ser HTTP (Não seguro) enquanto você está em um site HTTPS.");
-                } else {
-                    setError("Erro ao carregar o vídeo.");
-                }
+                setError("Erro ao carregar o vídeo. Pode ser bloqueio de CORS ou formato inválido.");
             };
         }
 
