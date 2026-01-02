@@ -35,14 +35,23 @@ app.get('/api/proxy', async (req, res) => {
         res.status(response.status);
 
         // Forward content type
-        const contentType = response.headers.get('content-type');
-        if (contentType) {
-            res.setHeader('Content-Type', contentType);
-        }
+        // Forward important headers
+        const headersToForward = ['content-type', 'content-length', 'accept-ranges'];
+        headersToForward.forEach(header => {
+            const value = response.headers.get(header);
+            if (value) {
+                res.setHeader(header.replace(/\b\w/g, l => l.toUpperCase()), value); // Normalize header case
+            }
+        });
 
-        // Send buffer
-        const buffer = await response.arrayBuffer();
-        res.send(Buffer.from(buffer));
+        // Use streaming instead of buffering (Critical for Video/Live TV)
+        if (response.body && typeof response.body.pipe === 'function') {
+            response.body.pipe(res);
+        } else {
+            // Fallback for non-stream bodies (older node-fetch versions)
+            const buffer = await response.arrayBuffer();
+            res.send(Buffer.from(buffer));
+        }
 
     } catch (error) {
         console.error('Proxy Error:', error);
