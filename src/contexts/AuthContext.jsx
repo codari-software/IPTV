@@ -47,10 +47,21 @@ export function AuthProvider({ children }) {
 
     // Save user settings
     async function updateUserSettings(data) {
-        if (!currentUser) return;
+        const user = auth.currentUser;
+        if (!user) {
+            console.error("Cannot save settings: No authenticated user");
+            return;
+        }
         try {
-            const docRef = doc(db, 'users', currentUser.uid);
+            const docRef = doc(db, 'users', user.uid);
             await setDoc(docRef, data, { merge: true });
+            // Also update local storage immediately to keep them in sync
+            if (data.credentials) {
+                localStorage.setItem('iptv_credentials', JSON.stringify({
+                    ...data.credentials,
+                    server_info: data.server_info
+                }));
+            }
         } catch (error) {
             console.error("Error updating user settings:", error);
             throw error;
@@ -59,27 +70,44 @@ export function AuthProvider({ children }) {
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            setCurrentUser(user);
-
             if (user) {
-                // Pre-fetch settings and sync to localStorage for legacy compatibility
+                setCurrentUser(user);
+                // Pre-fetch settings and sync to localStorage
                 try {
                     const docRef = doc(db, 'users', user.uid);
                     const docSnap = await getDoc(docRef);
+
                     if (docSnap.exists()) {
                         const data = docSnap.data();
+
+                        // Sync Credentials
                         if (data.credentials) {
                             localStorage.setItem('iptv_credentials', JSON.stringify({
                                 ...data.credentials,
                                 server_info: data.server_info
                             }));
                         }
+
+                        // Sync Watch History
+                        if (data.watch_history) {
+                            // We don't overwrite local history blindly, utilize header merge logic in useWatchHistory
+                            // But if local is empty, we can populate it.
+                            if (!localStorage.getItem('watch_history')) {
+                                localStorage.setItem('watch_history', JSON.stringify(data.watch_history));
+                            }
+                        }
+
+                        // Sync Favorites
+                        if (data.favorites) {
+                            localStorage.setItem('iptv_favorites', JSON.stringify(data.favorites));
+                        }
                     }
                 } catch (error) {
                     console.error("Auth Context: Failed to sync user settings", error);
                 }
             } else {
-                // Clear sensitive data on logout state
+                setCurrentUser(null);
+                // Clear sensitive data on logout
                 localStorage.removeItem('iptv_credentials');
                 localStorage.removeItem('iptv_favorites');
                 localStorage.removeItem('iptv_watch_history');

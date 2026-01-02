@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Tv, Film, Clapperboard, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -6,9 +6,30 @@ import ServerConnect from '../components/ServerConnect';
 
 const Dashboard = () => {
     const navigate = useNavigate();
-    const { logout, currentUser } = useAuth();
-    // AuthContext ensures localStorage is synced if user has settings
+    const { logout, currentUser, getUserSettings } = useAuth();
+    // AuthContext ensures localStorage is synced if user has settings, but we double check in effect
     const [hasSettings, setHasSettings] = useState(() => !!localStorage.getItem('iptv_credentials'));
+
+    useEffect(() => {
+        const checkSettings = async () => {
+            const hasCreds = !!localStorage.getItem('iptv_credentials');
+            if (hasCreds) {
+                setHasSettings(true);
+            } else if (currentUser) {
+                // Fallback: specific check if context sync failed
+                console.log("Checking remote settings for user...");
+                const data = await getUserSettings(currentUser.uid);
+                if (data && data.credentials) {
+                    localStorage.setItem('iptv_credentials', JSON.stringify({
+                        ...data.credentials,
+                        server_info: data.server_info
+                    }));
+                    setHasSettings(true);
+                }
+            }
+        };
+        checkSettings();
+    }, [currentUser, getUserSettings]);
 
     const handleLogout = async () => {
         try {

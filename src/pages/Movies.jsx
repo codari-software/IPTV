@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useDeferredValue, useMemo } from 'react';
+import React, { useEffect, useState, useDeferredValue, useMemo, useRef } from 'react';
 import { getVodCategories, getVodStreams } from '../services/api';
 import CategoryList from '../components/CategoryList';
 import ContentGrid from '../components/ContentGrid';
 import PlayerModal from '../components/PlayerModal';
 import useFavorites from '../hooks/useFavorites';
-import { ArrowLeft, Search } from 'lucide-react';
+import useWatchHistory from '../hooks/useWatchHistory';
+import { ArrowLeft, Search, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const Movies = () => {
@@ -17,7 +18,9 @@ const Movies = () => {
     const deferredQuery = useDeferredValue(searchQuery);
     const [playingMovie, setPlayingMovie] = useState(null);
     const { toggleFavorite, isFavorite, getFavoritesByType } = useFavorites('movie');
+    const { history, saveProgress } = useWatchHistory();
     const activeCategoryRef = React.useRef(null);
+    const lastSaveTimeRef = useRef(0);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -76,6 +79,14 @@ const Movies = () => {
         );
     }, [movies, deferredQuery]);
 
+    // Derived state for Continue Watching
+    const continueWatchingList = useMemo(() => {
+        if (!history) return [];
+        return Object.values(history)
+            .filter(item => item.type === 'movie' && (item.timestamp / (item.duration || 1) < 0.95))
+            .sort((a, b) => (b.lastWatched || 0) - (a.lastWatched || 0));
+    }, [history]);
+
     const handleMovieClick = (movie) => {
         const savedCreds = localStorage.getItem('iptv_credentials');
         if (!savedCreds) return;
@@ -88,7 +99,25 @@ const Movies = () => {
         const extension = movie.container_extension || 'mp4';
         const streamUrl = `${url}/movie/${username}/${password}/${movie.stream_id}.${extension}`;
 
-        setPlayingMovie({ ...movie, url: streamUrl });
+        // Check history for start time
+        const movieHistory = history[movie.stream_id];
+        const startTime = movieHistory ? movieHistory.timestamp : 0;
+
+        setPlayingMovie({ ...movie, url: streamUrl, startTime });
+        lastSaveTimeRef.current = 0;
+    };
+
+    const saveMovieProgress = (time, duration) => {
+        if (!playingMovie) return;
+        saveProgress(String(playingMovie.stream_id), {
+            type: 'movie',
+            name: playingMovie.name,
+            stream_icon: playingMovie.stream_icon,
+            container_extension: playingMovie.container_extension,
+            stream_id: playingMovie.stream_id,
+            timestamp: time,
+            duration: duration
+        });
     };
 
     return (
@@ -97,7 +126,18 @@ const Movies = () => {
                 <PlayerModal
                     streamUrl={playingMovie.url}
                     title={playingMovie.name}
-                    onClose={() => setPlayingMovie(null)}
+                    startTime={playingMovie.startTime}
+                    onClose={(t, d) => {
+                        if (t !== undefined) saveMovieProgress(t, d);
+                        setPlayingMovie(null);
+                    }}
+                    onProgress={(time, duration) => {
+                        const now = Date.now();
+                        if (now - lastSaveTimeRef.current >= 10000) {
+                            saveMovieProgress(time, duration);
+                            lastSaveTimeRef.current = now;
+                        }
+                    }}
                 />
             )}
             <CategoryList
@@ -115,7 +155,7 @@ const Movies = () => {
                         >
                             <ArrowLeft size={20} />
                         </button>
-                        <h1 className="text-lg font-bold text-white">Movies</h1>
+                        <h1 className="text-lg font-bold text-white">Filmes</h1>
                     </div>
 
                     <div className="relative w-64">
@@ -124,7 +164,7 @@ const Movies = () => {
                         </div>
                         <input
                             type="text"
-                            placeholder="Search movie..."
+                            placeholder="Buscar filme..."
                             className="w-full bg-black/20 border border-white/10 rounded-lg py-2 pl-10 pr-4 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -139,6 +179,22 @@ const Movies = () => {
                 </header>
 
                 <div className="flex-1 overflow-y-auto bg-gray-950 p-4">
+                    {/* Continue Watching Section */}
+                    {continueWatchingList.length > 0 && !searchQuery && (
+                        <div className="mb-8">
+                            <div className="flex items-center gap-2 mb-4 px-1">
+                                <Clock size={20} className="text-blue-500" />
+                                <h2 className="text-xl font-bold text-white">Continuar Assistindo</h2>
+                            </div>
+                            <ContentGrid
+                                items={continueWatchingList}
+                                onItemClick={handleMovieClick}
+                                onToggleFavorite={toggleFavorite}
+                                isFavorite={isFavorite}
+                            />
+                        </div>
+                    )}
+
                     {loading ? (
                         <div className="flex items-center justify-center h-full">
                             <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
