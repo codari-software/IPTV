@@ -1,51 +1,56 @@
 import axios from 'axios';
 
-export const authenticate = async (baseUrl, username, password) => {
+// Helper function to handle requests via proxy if needed
+const apiGet = async (baseUrl, params, customActionUrl = 'player_api.php') => {
     try {
-        // Ensure protocol is present
         let formattedUrl = baseUrl;
         if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
             formattedUrl = `http://${formattedUrl}`;
         }
-
-        // Remove trailing slash
         if (formattedUrl.endsWith('/')) {
             formattedUrl = formattedUrl.slice(0, -1);
         }
 
-        const shouldUseProxy = (targetUrl) => {
-            // Check if running in browser environment
-            if (typeof window !== 'undefined') {
-                // If current page is HTTPS and target is HTTP, we MUST use proxy
-                const isPageHttps = window.location.protocol === 'https:';
-                const isTargetHttp = targetUrl.startsWith('http://');
-                if (isPageHttps && isTargetHttp) return true;
+        const targetUrl = `${formattedUrl}/${customActionUrl}`;
 
-                // Optional: Force proxy for CORS issues if needed, but start with Mixed Content fix
-                // return true; 
-            }
-            return false;
-        };
+        // Determine if we should use the internal proxy
+        // We default to TRUE in browser logic to avoid CORS errors completely.
+        let useProxy = false;
+        if (typeof window !== 'undefined') {
+            useProxy = true;
+        }
 
-        let requestUrl = `${formattedUrl}/player_api.php`;
-        let requestParams = { username, password };
+        let requestUrl = targetUrl;
+        let requestParams = { ...params };
 
-        if (shouldUseProxy(formattedUrl)) {
-            // Use local Vercel proxy
+        if (useProxy) {
             requestUrl = '/api/proxy';
             requestParams = {
-                url: `${formattedUrl}/player_api.php`,
-                username,
-                password
+                url: targetUrl,
+                ...params
             };
         }
 
-        const response = await axios.get(requestUrl, {
-            params: requestParams
-        });
+        const response = await axios.get(requestUrl, { params: requestParams });
+        return response.data;
+    } catch (error) {
+        throw error;
+    }
+};
 
-        if (response.data && response.data.user_info && response.data.user_info.auth === 1) {
-            return { success: true, data: response.data, serverUrl: formattedUrl };
+export const authenticate = async (baseUrl, username, password) => {
+    try {
+        const data = await apiGet(baseUrl, { username, password });
+        if (data && data.user_info && data.user_info.auth === 1) {
+            // Need to return raw baseUrl as well for other components to use
+            let formattedUrl = baseUrl;
+            if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+                formattedUrl = `http://${formattedUrl}`;
+            }
+            if (formattedUrl.endsWith('/')) {
+                formattedUrl = formattedUrl.slice(0, -1);
+            }
+            return { success: true, data: data, serverUrl: formattedUrl };
         } else {
             return { success: false, message: 'Invalid credentials or expired account' };
         }
@@ -62,20 +67,7 @@ export const authenticate = async (baseUrl, username, password) => {
 
 export const getLiveCategories = async (baseUrl, username, password) => {
     try {
-        let requestUrl = `${baseUrl}/player_api.php`;
-        let params = { username, password, action: 'get_live_categories' };
-
-        // Simple Proxy Logic inline for now
-        if (typeof window !== 'undefined' && window.location.protocol === 'https:' && baseUrl.startsWith('http://')) {
-            requestUrl = '/api/proxy';
-            params = {
-                url: `${baseUrl}/player_api.php`,
-                ...params
-            };
-        }
-
-        const response = await axios.get(requestUrl, { params });
-        return response.data;
+        return await apiGet(baseUrl, { username, password, action: 'get_live_categories' }) || [];
     } catch (error) {
         console.error("Error fetching live categories", error);
         return [];
@@ -85,18 +77,8 @@ export const getLiveCategories = async (baseUrl, username, password) => {
 export const getLiveStreams = async (baseUrl, username, password, categoryId = null) => {
     try {
         const params = { username, password, action: 'get_live_streams' };
-        if (categoryId) {
-            params.category_id = categoryId;
-        }
-
-        let requestUrl = `${baseUrl}/player_api.php`;
-        if (typeof window !== 'undefined' && window.location.protocol === 'https:' && baseUrl.startsWith('http://')) {
-            requestUrl = '/api/proxy';
-            params.url = `${baseUrl}/player_api.php`;
-        }
-
-        const response = await axios.get(requestUrl, { params });
-        return response.data;
+        if (categoryId) params.category_id = categoryId;
+        return await apiGet(baseUrl, params) || [];
     } catch (error) {
         console.error("Error fetching live streams", error);
         return [];
@@ -105,19 +87,7 @@ export const getLiveStreams = async (baseUrl, username, password, categoryId = n
 
 export const getVodCategories = async (baseUrl, username, password) => {
     try {
-        let requestUrl = `${baseUrl}/player_api.php`;
-        let params = { username, password, action: 'get_vod_categories' };
-
-        if (typeof window !== 'undefined' && window.location.protocol === 'https:' && baseUrl.startsWith('http://')) {
-            requestUrl = '/api/proxy';
-            params = {
-                url: `${baseUrl}/player_api.php`,
-                ...params
-            };
-        }
-
-        const response = await axios.get(requestUrl, { params });
-        return response.data;
+        return await apiGet(baseUrl, { username, password, action: 'get_vod_categories' }) || [];
     } catch (error) {
         console.error("Error fetching VOD categories", error);
         return [];
@@ -127,18 +97,8 @@ export const getVodCategories = async (baseUrl, username, password) => {
 export const getVodStreams = async (baseUrl, username, password, categoryId = null) => {
     try {
         const params = { username, password, action: 'get_vod_streams' };
-        if (categoryId) {
-            params.category_id = categoryId;
-        }
-
-        let requestUrl = `${baseUrl}/player_api.php`;
-        if (typeof window !== 'undefined' && window.location.protocol === 'https:' && baseUrl.startsWith('http://')) {
-            requestUrl = '/api/proxy';
-            params.url = `${baseUrl}/player_api.php`;
-        }
-
-        const response = await axios.get(requestUrl, { params });
-        return response.data;
+        if (categoryId) params.category_id = categoryId;
+        return await apiGet(baseUrl, params) || [];
     } catch (error) {
         console.error("Error fetching VOD streams", error);
         return [];
@@ -147,19 +107,7 @@ export const getVodStreams = async (baseUrl, username, password, categoryId = nu
 
 export const getVodInfo = async (baseUrl, username, password, vodId) => {
     try {
-        let requestUrl = `${baseUrl}/player_api.php`;
-        let params = { username, password, action: 'get_vod_info', vod_id: vodId };
-
-        if (typeof window !== 'undefined' && window.location.protocol === 'https:' && baseUrl.startsWith('http://')) {
-            requestUrl = '/api/proxy';
-            params = {
-                url: `${baseUrl}/player_api.php`,
-                ...params
-            };
-        }
-
-        const response = await axios.get(requestUrl, { params });
-        return response.data;
+        return await apiGet(baseUrl, { username, password, action: 'get_vod_info', vod_id: vodId });
     } catch (error) {
         console.error("Error fetching VOD info", error);
         return null;
@@ -168,19 +116,7 @@ export const getVodInfo = async (baseUrl, username, password, vodId) => {
 
 export const getSeriesCategories = async (baseUrl, username, password) => {
     try {
-        let requestUrl = `${baseUrl}/player_api.php`;
-        let params = { username, password, action: 'get_series_categories' };
-
-        if (typeof window !== 'undefined' && window.location.protocol === 'https:' && baseUrl.startsWith('http://')) {
-            requestUrl = '/api/proxy';
-            params = {
-                url: `${baseUrl}/player_api.php`,
-                ...params
-            };
-        }
-
-        const response = await axios.get(requestUrl, { params });
-        return response.data;
+        return await apiGet(baseUrl, { username, password, action: 'get_series_categories' }) || [];
     } catch (error) {
         console.error("Error fetching series categories", error);
         return [];
@@ -190,18 +126,8 @@ export const getSeriesCategories = async (baseUrl, username, password) => {
 export const getSeries = async (baseUrl, username, password, categoryId = null) => {
     try {
         const params = { username, password, action: 'get_series' };
-        if (categoryId) {
-            params.category_id = categoryId;
-        }
-
-        let requestUrl = `${baseUrl}/player_api.php`;
-        if (typeof window !== 'undefined' && window.location.protocol === 'https:' && baseUrl.startsWith('http://')) {
-            requestUrl = '/api/proxy';
-            params.url = `${baseUrl}/player_api.php`;
-        }
-
-        const response = await axios.get(requestUrl, { params });
-        return response.data;
+        if (categoryId) params.category_id = categoryId;
+        return await apiGet(baseUrl, params) || [];
     } catch (error) {
         console.error("Error fetching series", error);
         return [];
@@ -210,19 +136,7 @@ export const getSeries = async (baseUrl, username, password, categoryId = null) 
 
 export const getSeriesInfo = async (baseUrl, username, password, seriesId) => {
     try {
-        let requestUrl = `${baseUrl}/player_api.php`;
-        let params = { username, password, action: 'get_series_info', series_id: seriesId };
-
-        if (typeof window !== 'undefined' && window.location.protocol === 'https:' && baseUrl.startsWith('http://')) {
-            requestUrl = '/api/proxy';
-            params = {
-                url: `${baseUrl}/player_api.php`,
-                ...params
-            };
-        }
-
-        const response = await axios.get(requestUrl, { params });
-        return response.data;
+        return await apiGet(baseUrl, { username, password, action: 'get_series_info', series_id: seriesId });
     } catch (error) {
         console.error("Error fetching series info", error);
         return null;
