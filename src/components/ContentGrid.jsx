@@ -1,6 +1,7 @@
 import React from 'react';
 import { Play, Heart, RotateCcw } from 'lucide-react';
 import useWatchHistory from '../hooks/useWatchHistory';
+import { getSecureImage } from '../utils/imageHelper';
 
 const ContentGrid = ({ items, onItemClick, onToggleFavorite, isFavorite }) => {
     const { getProgress } = useWatchHistory();
@@ -43,7 +44,7 @@ const ContentGrid = ({ items, onItemClick, onToggleFavorite, isFavorite }) => {
                     >
                         {item.stream_icon || item.cover || item.logo ? (
                             <img
-                                src={item.stream_icon || item.cover || item.logo}
+                                src={getSecureImage(item.stream_icon || item.cover || item.logo)}
                                 alt={item.name}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                 loading="lazy"

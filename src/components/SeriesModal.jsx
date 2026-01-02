@@ -3,6 +3,7 @@ import { getSeriesInfo } from '../services/api';
 import PlayerModal from './PlayerModal';
 import useWatchHistory from '../hooks/useWatchHistory';
 import { X, Play, ChevronDown, ChevronRight } from 'lucide-react';
+import { getSecureImage } from '../utils/imageHelper';
 
 const SeriesModal = ({ series, onClose }) => {
     const [info, setInfo] = useState(null);
@@ -150,7 +151,7 @@ const SeriesModal = ({ series, onClose }) => {
                         {/* Cover & Info */}
                         <div className="w-full md:w-1/3 bg-gray-950 p-6 flex flex-col gap-4 overflow-y-auto">
                             <img
-                                src={info?.cover || series.cover}
+                                src={getSecureImage(info?.cover || series.cover)}
                                 alt={series.name}
                                 className="w-full rounded-xl shadow-lg aspect-[2/3] object-cover"
                             />
@@ -228,11 +229,12 @@ const SeriesModal = ({ series, onClose }) => {
                                         {/* Episode Thumbnail */}
                                         <div className="relative w-40 aspect-video bg-gray-900 rounded-md overflow-hidden shrink-0">
                                             <img
-                                                src={ep.info?.movie_image || info?.cover || series.cover}
+                                                src={getSecureImage(ep.info?.movie_image || info?.cover || series.cover)}
                                                 alt={ep.title}
                                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                                 loading="lazy"
                                                 onError={(e) => {
+                                                    // On error, try placeholder
                                                     e.target.src = 'https://via.placeholder.com/300x169/1f2937/6b7280?text=No+Preview';
                                                 }}
                                             />

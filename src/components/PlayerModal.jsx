@@ -28,15 +28,23 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
 
     const controlsTimeoutRef = useRef(null);
 
+    const [error, setError] = useState(null);
+
     // Initial Setup
     useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
 
+        setError(null); // Reset error on new stream
+        setBuffering(true);
+
         let playUrl = streamUrl;
         if (playUrl.endsWith('.ts')) {
             playUrl = playUrl.replace('.ts', '.m3u8');
         }
+
+        // Mixed Content Check (Heuristic)
+        const isMixedContent = window.location.protocol === 'https:' && playUrl.startsWith('http:');
 
         const isHls = playUrl.includes('.m3u8');
 
@@ -46,14 +54,38 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
             hls.loadSource(playUrl);
             hls.attachMedia(video);
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                video.play().catch(() => { });
+                video.play().catch((e) => console.log("Autoplay failed", e));
             });
             hls.on(Hls.Events.ERROR, (event, data) => {
-                if (data.fatal) console.error("HLS Fatal", data);
+                if (data.fatal) {
+                    console.error("HLS Fatal", data);
+                    if (isMixedContent) {
+                        setError("Erro de Segurança: Navegadores bloqueiam canais HTTP em sites HTTPS (Vercel). Seu provedor IPTV precisa suportar HTTPS.");
+                    } else {
+                        setError("Erro ao carregar o canal. Verifique sua conexão ou se o canal está offline.");
+                    }
+                    hls.destroy();
+                }
             });
         } else {
             video.src = playUrl;
-            video.play().catch(() => { });
+            video.play().catch((e) => {
+                console.log("HTML5 Play failed", e);
+                if (isMixedContent) {
+                    setError("Erro de Segurança: O navegador bloqueou este canal por ser HTTP (Não seguro) enquanto você está em um site HTTPS.");
+                } else {
+                    setError("Erro de reprodução. Formato não suportado ou erro de servidor.");
+                }
+            });
+
+            // Add native error listener
+            video.onerror = () => {
+                if (isMixedContent) {
+                    setError("Erro de Segurança: O navegador bloqueou este canal por ser HTTP (Não seguro) enquanto você está em um site HTTPS.");
+                } else {
+                    setError("Erro ao carregar o vídeo.");
+                }
+            };
         }
 
         return () => {
@@ -206,8 +238,29 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
                     </button>
                 </div>
 
+                {/* Error Indicator */}
+                {error && (
+                    <div className="absolute inset-0 flex items-center justify-center z-30 bg-black/80 p-8 text-center">
+                        <div className="max-w-md bg-gray-900 border border-red-500/30 p-6 rounded-xl shadow-2xl">
+                            <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <X size={32} className="text-red-500" />
+                            </div>
+                            <h3 className="text-xl font-bold text-white mb-2">Erro de Reprodução</h3>
+                            <p className="text-gray-300 text-sm leading-relaxed mb-6">
+                                {error}
+                            </p>
+                            <button
+                                onClick={() => onClose(0, 0)}
+                                className="px-6 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white font-medium transition-colors"
+                            >
+                                Fechar Player
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* Buffering Indicator */}
-                {buffering && (
+                {!error && buffering && (
                     <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
                         <div className="bg-black/40 p-4 rounded-full backdrop-blur-sm">
                             <Loader size={40} className="text-blue-500 animate-spin" />
