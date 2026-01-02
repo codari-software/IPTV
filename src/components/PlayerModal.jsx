@@ -40,31 +40,22 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
 
         let playUrl = streamUrl;
 
-        // 1. PROXY HANDLING (CRITICAL FOR LIVE TV ON WEB)
-        // If we represent a browser and the stream is HTTP (or we are solving CORS), we MUST use the proxy.
-        if (typeof window !== 'undefined' && playUrl.startsWith('http')) {
-            // Check if we are already using the proxy (avoid double proxying)
-            const isAhleadyProxy = playUrl.includes('/api/proxy');
-
-            // Only proxy if not already proxied and if we are in a secure context or need CORS
-            if (!isAhleadyProxy) {
-                console.log("Routing stream through internal proxy for Live TV compatibility");
-                const proxyBase = import.meta.env.VITE_PROXY_URL || '/api/proxy';
-                playUrl = `${proxyBase}?url=${encodeURIComponent(playUrl)}`;
-            }
+        // 1. Auto-upgrade to HTTPS if we are on a secure page (like Vercel)
+        // This solves the Mixed Content issue if the user's provider supports HTTPS but they logged in with HTTP.
+        if (window.location.protocol === 'https:' && playUrl.startsWith('http://')) {
+            console.log("Auto-upgrading HTTP stream to HTTPS for Vercel/Secure Context");
+            playUrl = playUrl.replace('http://', 'https://');
         }
 
         // 2. Format conversion
-        // Ensure .ts streams are treated as m3u8 if possible or just passed through
-        if (playUrl.includes('.ts') && !playUrl.includes('.m3u8')) {
-            // Some providers allow changing extension, but with proxy we send the original usually.
-            // However, hls.js handles m3u8 best. Let's trust the input or the proxy.
+        if (playUrl.endsWith('.ts')) {
+            playUrl = playUrl.replace('.ts', '.m3u8');
         }
 
+        // Mixed Content Check (Heuristic after upgrade attempt)
         const isMixedContent = window.location.protocol === 'https:' && playUrl.startsWith('http:');
 
-        // Check if HLS is needed (m3u8 OR if we are proxying, we assume it might be HLS stream)
-        const isHls = playUrl.includes('.m3u8') || playUrl.includes('/api/proxy');
+        const isHls = playUrl.includes('.m3u8');
 
         if (isHls && Hls.isSupported()) {
             const hls = new Hls();

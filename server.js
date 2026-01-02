@@ -40,7 +40,7 @@ app.get('/api/proxy', async (req, res) => {
             res.setHeader('Content-Type', contentType);
         }
 
-        // Send buffer (Método antigo que funcionava para VOD)
+        // Send buffer
         const buffer = await response.arrayBuffer();
         res.send(Buffer.from(buffer));
 
@@ -51,6 +51,7 @@ app.get('/api/proxy', async (req, res) => {
 });
 
 // Serve Static Files (Dist)
+// Certifique-se de rodar 'npm run build' antes
 app.use(express.static(join(__dirname, 'dist')));
 
 // Fallback para React Router (SPA)
