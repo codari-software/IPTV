@@ -23,7 +23,7 @@ app.get('/api/stream', async (req, res) => {
         console.log(`[Stream] Piping: ${url}`);
         const response = await axios.get(url, {
             params: queryParams,
-            responseType: 'stream',
+            responseType: 'stream', // Default to stream
             validateStatus: () => true,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -32,7 +32,9 @@ app.get('/api/stream', async (req, res) => {
 
         res.status(response.status);
 
-        // Forward safe headers
+        const contentType = response.headers['content-type'];
+
+        // Forward headers
         const headers = ['content-type', 'accept-ranges', 'access-control-allow-origin'];
         Object.keys(response.headers).forEach(key => {
             if (headers.includes(key.toLowerCase())) {
@@ -40,7 +42,55 @@ app.get('/api/stream', async (req, res) => {
             }
         });
 
-        response.data.pipe(res);
+        // HLS REWRITER LOGIC
+        // If it is an m3u8 playlist, we MUST rewrite the internal links to also go through the proxy.
+        if (contentType && (contentType.includes('application/vnd.apple.mpegurl') || contentType.includes('application/x-mpegurl') || url.includes('.m3u8'))) {
+            // We need to read the stream into a string to modify it
+            const stream = response.data;
+            const chunks = [];
+            for await (const chunk of stream) {
+                chunks.push(Buffer.from(chunk));
+            }
+            const originalM3u8 = Buffer.concat(chunks).toString('utf-8');
+
+            // Base URL for resolving relative paths
+            const urlObj = new URL(url);
+            const baseUrl = urlObj.origin + urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf('/') + 1);
+
+            // Rewrite Logic
+            const modifiedM3u8 = originalM3u8.split('\n').map(line => {
+                if (line.trim().startsWith('#') || line.trim() === '') return line; // Skip comments/empty
+
+                // It's a URL (chunk or sub-playlist)
+                let lineUrl = line.trim();
+                let absoluteUrl;
+
+                if (lineUrl.startsWith('http')) {
+                    absoluteUrl = lineUrl;
+                } else {
+                    // Resolve relative path
+                    absoluteUrl = new URL(lineUrl, baseUrl).toString();
+                }
+
+                // Point back to OUR proxy
+                // We rely on 'host' header to know our own address, or just relative path if same domain
+                // Safer to use absolute path matching the incoming request protocol/host
+                const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+                const host = req.headers.host;
+                const proxyUrl = `${protocol}://${host}/api/stream?url=${encodeURIComponent(absoluteUrl)}`;
+
+                return proxyUrl;
+            }).join('\n');
+
+            // Send modified content
+            res.setHeader('Content-Length', Buffer.byteLength(modifiedM3u8));
+            res.send(modifiedM3u8);
+
+        } else {
+            // Not a playlist (probably a TS chunk or other video), just pipe it
+            response.data.pipe(res);
+        }
+
     } catch (error) {
         console.error('Stream Error:', error.message);
         if (!res.headersSent) res.status(500).end();
