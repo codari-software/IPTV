@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import axios from 'axios';
+import fetch from 'node-fetch';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 8080;
 app.use(cors());
 app.use(express.json());
 
-// Proxy Endpoint
+// Proxy Endpoint (Substitui o Vercel Serverless Function)
 app.get('/api/proxy', async (req, res) => {
     const { url, ...queryParams } = req.query;
 
@@ -22,41 +22,35 @@ app.get('/api/proxy', async (req, res) => {
     }
 
     try {
-        console.log(`[Proxy] Requesting: ${url}`);
-
-        const response = await axios.get(url, {
-            params: queryParams,
-            responseType: 'stream',
-            validateStatus: () => true, // Forward all status codes
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
+        const targetUrl = new URL(url);
+        Object.keys(queryParams).forEach(key => {
+            targetUrl.searchParams.append(key, queryParams[key]);
         });
 
-        // Forward Status
+        console.log(`[Proxy] Forwarding to: ${targetUrl.toString()}`);
+
+        const response = await fetch(targetUrl.toString());
+
+        // Forward status
         res.status(response.status);
 
-        // Forward Headers
-        const headersToForward = ['content-type', 'accept-ranges', 'access-control-allow-origin'];
-        Object.keys(response.headers).forEach(header => {
-            if (headersToForward.includes(header.toLowerCase())) {
-                res.setHeader(header, response.headers[header]);
-            }
-        });
+        // Forward content type
+        const contentType = response.headers.get('content-type');
+        if (contentType) {
+            res.setHeader('Content-Type', contentType);
+        }
 
-        // Pipe Data (Axios returns a Node Stream in 'data')
-        response.data.pipe(res);
+        // Send buffer (Método antigo que funcionava para VOD)
+        const buffer = await response.arrayBuffer();
+        res.send(Buffer.from(buffer));
 
     } catch (error) {
-        console.error('Proxy Error:', error.message);
-        if (!res.headersSent) {
-            res.status(500).json({ error: 'Proxy Request Failed', details: error.message });
-        }
+        console.error('Proxy Error:', error);
+        res.status(500).json({ error: 'Failed to fetch data', details: error.message });
     }
 });
 
 // Serve Static Files (Dist)
-// Certifique-se de rodar 'npm run build' antes
 app.use(express.static(join(__dirname, 'dist')));
 
 // Fallback para React Router (SPA)
