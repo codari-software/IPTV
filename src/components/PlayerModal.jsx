@@ -64,7 +64,8 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
         // Mixed Content Check (Heuristic after upgrade attempt)
         const isMixedContent = window.location.protocol === 'https:' && playUrl.startsWith('http:');
 
-        const isHls = playUrl.includes('.m3u8');
+        // Check if HLS is needed (m3u8 OR if we are proxying via stream, we treat it as potential HLS/TS stream for hls.js to try)
+        const isHls = playUrl.includes('.m3u8') || playUrl.includes('/api/stream');
 
         if (isHls && Hls.isSupported()) {
             const hls = new Hls();
@@ -80,7 +81,7 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
                     if (isMixedContent) {
                         setError("Erro de Segurança: Navegador bloqueou conteúdo HTTP (Inseguro) em site HTTPS. Tente usar a versão HTTPS da sua lista.");
                     } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-                        setError("Erro de Conexão ou CORS. O servidor da sua lista pode estar bloqueando o acesso via Web (Vercel). Tente o App Desktop ou verifique se sua lista suporta Web Player (CORS).");
+                        setError("Erro de Conexão. O canal pode estar offline ou o formato não é suportado pelo Web Player. Tente usar o APP Desktop.");
                     } else {
                         setError("Erro ao carregar o canal. Verifique sua conexão ou se o canal está offline.");
                     }
