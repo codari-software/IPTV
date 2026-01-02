@@ -24,7 +24,7 @@ const apiGet = async (baseUrl, params, customActionUrl = 'player_api.php') => {
         let requestParams = { ...params };
 
         if (useProxy) {
-            requestUrl = '/api/proxy';
+            requestUrl = import.meta.env.VITE_PROXY_URL || '/api/proxy';
             requestParams = {
                 url: targetUrl,
                 ...params
