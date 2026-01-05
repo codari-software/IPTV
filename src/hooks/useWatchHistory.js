@@ -34,16 +34,30 @@ const useWatchHistory = () => {
                     const localData = loadLocal();
                     const merged = { ...cloudData };
 
+                    let needsCloudUpdate = false;
+                    const updatesForCloud = {};
+
                     Object.keys(localData).forEach(key => {
                         const localItem = localData[key];
                         const cloudItem = merged[key];
                         // If local is newer or cloud doesn't have it, keep local
                         if (!cloudItem || (localItem.lastWatched || 0) > (cloudItem.lastWatched || 0)) {
                             merged[key] = localItem;
+                            // Schedule update to cloud to ensure sync
+                            needsCloudUpdate = true;
+                            updatesForCloud[`watch_history.${key}`] = localItem;
                         }
                     });
 
                     setHistory(merged);
+                    // Sync merged state back to localStorage so it persists
+                    localStorage.setItem('watch_history', JSON.stringify(merged));
+
+                    // If we found local data that is newer than cloud, push it up
+                    if (needsCloudUpdate && Object.keys(updatesForCloud).length > 0) {
+                        setDoc(doc(db, "users", currentUser.uid), updatesForCloud, { merge: true })
+                            .catch(e => console.error("Auto-sync to cloud failed:", e));
+                    }
                 }, (error) => {
                     console.warn("Firestore sync error:", error.message);
                     setHistory(loadLocal()); // Fallback to local on error

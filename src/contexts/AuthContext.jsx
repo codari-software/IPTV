@@ -110,7 +110,7 @@ export function AuthProvider({ children }) {
                 // Clear sensitive data on logout
                 localStorage.removeItem('iptv_credentials');
                 localStorage.removeItem('iptv_favorites');
-                localStorage.removeItem('iptv_watch_history');
+                localStorage.removeItem('watch_history');
             }
 
             setLoading(false);
