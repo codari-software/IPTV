@@ -31,7 +31,7 @@ const SeriesModal = ({ series, onClose }) => {
                 const seasonKeys = Object.keys(data.episodes || {});
                 setSeasons(seasonKeys);
 
-                // Check history for last watched season
+                // Initial Season Selection
                 const history = getProgress(series.series_id);
                 if (history && history.season && seasonKeys.includes(String(history.season))) {
                     setSelectedSeason(String(history.season));
@@ -43,6 +43,24 @@ const SeriesModal = ({ series, onClose }) => {
         };
         fetchData();
     }, [series]);
+
+    // React to History Changes for Season Selection (e.g. Sync occurred after open)
+    useEffect(() => {
+        if (!seasons.length) return;
+
+        const history = getProgress(series.series_id);
+        if (history && history.season && seasons.includes(String(history.season))) {
+            // Only auto-switch if we are currently on default/first season or matches old history, 
+            // but effectively we want to sync to "Resume" point primarily.
+            // But we don't want to jump if user is just browsing other seasons.
+            // Let's safe bet: Update IF current selection is NOT the resume season.
+            // Actually, this might annoy users browsing. 
+            // Better strategy: Only if 'playingEpisode' is null.
+            if (!playingEpisode) {
+                setSelectedSeason(String(history.season));
+            }
+        }
+    }, [getProgress(series.series_id)?.season, seasons.length]);
 
     // Handle ESC key to close modal
     useEffect(() => {

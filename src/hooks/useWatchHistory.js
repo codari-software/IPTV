@@ -13,6 +13,13 @@ const useWatchHistory = () => {
             try {
                 const local = localStorage.getItem('watch_history');
                 if (local) return JSON.parse(local);
+
+                // Fallback/Migration for legacy key
+                const legacy = localStorage.getItem('iptv_watch_history');
+                if (legacy) {
+                    console.log("Migrating legacy watch history...");
+                    return JSON.parse(legacy);
+                }
             } catch (e) {
                 console.error("Error loading local history:", e);
             }
@@ -36,25 +43,45 @@ const useWatchHistory = () => {
 
                     let needsCloudUpdate = false;
                     const updatesForCloud = {};
+                    let hasChanges = false;
+
+                    console.log(`[WatchHistory] Syncing. Local: ${Object.keys(localData).length}, Cloud: ${Object.keys(cloudData).length}`);
 
                     Object.keys(localData).forEach(key => {
                         const localItem = localData[key];
                         const cloudItem = merged[key];
-                        // If local is newer or cloud doesn't have it, keep local
-                        if (!cloudItem || (localItem.lastWatched || 0) > (cloudItem.lastWatched || 0)) {
+
+                        // Timestamps
+                        const localTime = localItem.lastWatched || 0;
+                        const cloudTime = cloudItem?.lastWatched || 0;
+
+                        // Check if Local is Newer
+                        if (!cloudItem || localTime > cloudTime) {
+                            if (localTime > cloudTime) {
+                                console.log(`[WatchHistory] Local newer for ${key}. Local: ${localTime}, Cloud: ${cloudTime}`);
+                            }
                             merged[key] = localItem;
-                            // Schedule update to cloud to ensure sync
                             needsCloudUpdate = true;
                             updatesForCloud[`watch_history.${key}`] = localItem;
+                            hasChanges = true;
                         }
+                        // Note: If Cloud is Newer or Equal, 'merged' already has it (from ...cloudData)
                     });
 
+                    if (Object.keys(merged).length > Object.keys(localData).length) {
+                        hasChanges = true;
+                    }
+
+                    // Only update state if something truly changed to avoid loops/re-renders
+                    // But 'merged' is a new object reference, so React might update anyway. We trust React Diffing.
                     setHistory(merged);
+
                     // Sync merged state back to localStorage so it persists
                     localStorage.setItem('watch_history', JSON.stringify(merged));
 
                     // If we found local data that is newer than cloud, push it up
                     if (needsCloudUpdate && Object.keys(updatesForCloud).length > 0) {
+                        console.log("[WatchHistory] Pushing local updates to cloud:", Object.keys(updatesForCloud));
                         setDoc(doc(db, "users", currentUser.uid), updatesForCloud, { merge: true })
                             .catch(e => console.error("Auto-sync to cloud failed:", e));
                     }
