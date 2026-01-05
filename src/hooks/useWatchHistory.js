@@ -32,13 +32,6 @@ const useWatchHistory = () => {
 
             try {
                 const unsub = onSnapshot(doc(db, "users", currentUser.uid), { includeMetadataChanges: true }, (docSnap) => {
-                    // Prevent infinite loops: If the snapshot contains our own pending writes,
-                    // we don't need to try to "fix" it again.
-                    if (docSnap.metadata.hasPendingWrites) {
-                        console.log("[WatchHistory] Skipping snapshot with pending writes.");
-                        return;
-                    }
-
                     let cloudData = {};
                     if (docSnap.exists() && docSnap.data().watch_history) {
                         cloudData = docSnap.data().watch_history;
@@ -52,49 +45,54 @@ const useWatchHistory = () => {
                     const updatesForCloud = {};
                     let hasChanges = false;
 
-                    console.log(`[WatchHistory] Syncing. Local: ${Object.keys(localData).length}, Cloud: ${Object.keys(cloudData).length}`);
+                    const pendingWrites = docSnap.metadata.hasPendingWrites;
+                    console.log(`[WatchHistory] Syncing. PendingWrites: ${pendingWrites}, Cloud Items: ${Object.keys(cloudData).length}`);
 
                     Object.keys(localData).forEach(key => {
                         const localItem = localData[key];
                         const cloudItem = merged[key];
 
-                        // Timestamps
-                        const localTime = localItem.lastWatched || 0;
-                        const cloudTime = cloudItem?.lastWatched || 0;
+                        // Timestamps - Ensure numeric comparison
+                        const localTime = Number(localItem.lastWatched || 0);
+                        const cloudTime = Number(cloudItem?.lastWatched || 0);
 
                         // Check if Local is Newer
+                        // If cloudData has pending writes, it ALREADY reflects our recent local change.
+                        // So localTime == cloudTime usually.
                         if (!cloudItem || localTime > cloudTime) {
                             if (localTime > cloudTime) {
                                 console.log(`[WatchHistory] Local newer for ${key}. Local: ${localTime}, Cloud: ${cloudTime}`);
+                                needsCloudUpdate = true;
+                                updatesForCloud[`watch_history.${key}`] = localItem;
+                            } else if (!cloudItem) {
+                                // Cloud missing this item entirely
+                                needsCloudUpdate = true;
+                                updatesForCloud[`watch_history.${key}`] = localItem;
                             }
+
                             merged[key] = localItem;
-                            needsCloudUpdate = true;
-                            updatesForCloud[`watch_history.${key}`] = localItem;
                             hasChanges = true;
                         }
-                        // Note: If Cloud is Newer or Equal, 'merged' already has it (from ...cloudData)
                     });
 
                     if (Object.keys(merged).length > Object.keys(localData).length) {
                         hasChanges = true;
                     }
 
-                    // Only update state if something truly changed to avoid loops/re-renders
-                    // But 'merged' is a new object reference, so React might update anyway. We trust React Diffing.
+                    // Always Update State so user sees their progress immediately
                     setHistory(merged);
-
-                    // Sync merged state back to localStorage so it persists
                     localStorage.setItem('watch_history', JSON.stringify(merged));
 
-                    // If we found local data that is newer than cloud, push it up
-                    if (needsCloudUpdate && Object.keys(updatesForCloud).length > 0) {
+                    // Sync Back to Cloud
+                    // Only push if we found newer local data AND we aren't already in a pending write state for this snapshot.
+                    if (needsCloudUpdate && Object.keys(updatesForCloud).length > 0 && !pendingWrites) {
                         console.log("[WatchHistory] Pushing local updates to cloud:", Object.keys(updatesForCloud));
                         setDoc(doc(db, "users", currentUser.uid), updatesForCloud, { merge: true })
                             .catch(e => console.error("Auto-sync to cloud failed:", e));
                     }
                 }, (error) => {
                     console.warn("Firestore sync error:", error.message);
-                    setHistory(loadLocal()); // Fallback to local on error
+                    setHistory(loadLocal());
                 });
                 return () => unsub();
             } catch (e) {
