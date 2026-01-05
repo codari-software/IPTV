@@ -31,7 +31,14 @@ const useWatchHistory = () => {
             if (!db) return;
 
             try {
-                const unsub = onSnapshot(doc(db, "users", currentUser.uid), (docSnap) => {
+                const unsub = onSnapshot(doc(db, "users", currentUser.uid), { includeMetadataChanges: true }, (docSnap) => {
+                    // Prevent infinite loops: If the snapshot contains our own pending writes,
+                    // we don't need to try to "fix" it again.
+                    if (docSnap.metadata.hasPendingWrites) {
+                        console.log("[WatchHistory] Skipping snapshot with pending writes.");
+                        return;
+                    }
+
                     let cloudData = {};
                     if (docSnap.exists() && docSnap.data().watch_history) {
                         cloudData = docSnap.data().watch_history;
