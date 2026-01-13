@@ -92,7 +92,8 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
             video.src = playUrl;
             video.play().catch((e) => {
                 console.log("HTML5 Play failed", e);
-                setError("Erro de reprodução. Formato não suportado ou erro de servidor.");
+                // Don't set error here, as it might be just an autoplay block.
+                // Real errors are handled by video.onerror
             });
 
             video.onerror = () => {
@@ -305,6 +306,7 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
                     onPlaying={() => {
                         setPlaying(true);
                         setBuffering(false);
+                        setError(null);
                     }}
                     onPause={() => setPlaying(false)}
                     onEnded={() => {

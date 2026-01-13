@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Tv, Film, Clapperboard, LogOut } from 'lucide-react';
+import { Tv, Film, Clapperboard, LogOut, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import ServerConnect from '../components/ServerConnect';
@@ -37,6 +37,13 @@ const Dashboard = () => {
             navigate('/login');
         } catch (error) {
             console.error("Failed to log out", error);
+        }
+    };
+
+    const handleSwitchPlaylist = () => {
+        if (window.confirm('Tem certeza que deseja trocar de playlist?')) {
+            localStorage.removeItem('iptv_credentials');
+            setHasSettings(false);
         }
     };
 
@@ -81,6 +88,13 @@ const Dashboard = () => {
                     <h1 className="text-2xl font-bold">IPTV Pro</h1>
                 </div>
                 <div className="flex items-center gap-4">
+                    <button
+                        onClick={handleSwitchPlaylist}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+                    >
+                        <Settings size={18} />
+                        <span>Trocar Playlist</span>
+                    </button>
                     <div className="text-sm text-gray-400">
                         {currentUser?.email}
                     </div>
