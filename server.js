@@ -147,7 +147,39 @@ app.use((req, res) => {
     }
 });
 
+// Keep-Alive Mechanism (Prevents Render Sleeping)
+const KEEP_ALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes in milliseconds
+
+function startKeepAlive() {
+    const url = process.env.RENDER_EXTERNAL_URL || `https://iptv-web-player-9xui.onrender.com`;
+
+    // Validar se estamos em ambiente de produção (Render) para usar o URL externo
+    // Se não houver URL externo, usamos localhost apenas para manter o processo ativo localmente se necessário, 
+    // mas o foco é o Render.
+
+    console.log(`[Keep-Alive] Configurado para pingar: ${url} a cada ${KEEP_ALIVE_INTERVAL / 60000} minutos.`);
+
+    setInterval(async () => {
+        try {
+            const response = await fetch(url);
+            console.log(`[Keep-Alive] Ping enviado para ${url}. Status: ${response.status}`);
+        } catch (error) {
+            console.error(`[Keep-Alive] Erro ao pingar ${url}:`, error.message);
+        }
+    }, KEEP_ALIVE_INTERVAL);
+}
+
+// Iniciar Keep-Alive apenas se estiver em produção ou se desejar testar
+if (process.env.NODE_ENV === 'production' || process.env.RENDER_EXTERNAL_URL) {
+    startKeepAlive();
+}
+
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Open http://localhost:${PORT}`);
+
+    // Se não estiver em produção, mas quisermos avisar
+    if (!process.env.RENDER_EXTERNAL_URL) {
+        console.log('Para impedir o sono no Render, certifique-se de que a variável RENDER_EXTERNAL_URL esteja disponível lá.');
+    }
 });
