@@ -40,32 +40,32 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
 
         let playUrl = streamUrl;
 
-        // 1. PROXY HANDLING FOR LIVE TV
-        // If it sends 'http' and we are in browser, force our new Stream Endpoint
-        if (isLive && typeof window !== 'undefined' && playUrl.startsWith('http')) {
-            console.log("Routing LIVE stream through /api/stream");
-            // Use our new specific streaming endpoint
-            // Construct absolute path to ensure we hit the same origin
-            const currentOrigin = window.location.origin;
-            playUrl = `${currentOrigin}/api/stream?url=${encodeURIComponent(playUrl)}`;
-        }
-
-        // 2. HTTPS Upgrade (Legacy fallback for non-live)
-        else if (window.location.protocol === 'https:' && playUrl.startsWith('http://')) {
-            console.log("Auto-upgrading HTTP stream to HTTPS for Vercel/Secure Context");
-            playUrl = playUrl.replace('http://', 'https://');
-        }
-
-        // 2. Format conversion
+        // 0. Format Fix (Pre-Proxy)
         if (playUrl.endsWith('.ts')) {
             playUrl = playUrl.replace('.ts', '.m3u8');
         }
 
-        // Mixed Content Check (Heuristic after upgrade attempt)
-        const isMixedContent = window.location.protocol === 'https:' && playUrl.startsWith('http:');
+        // 1. PROXY HANDLING (Live TV OR Mixed Content Prevention)
+        // If stream is HTTP and we are on HTTPS, browsers block it (Mixed Content).
+        // We must route through our local proxy (which runs on the same protocol as the page).
+        const isMixedContentSource = typeof window !== 'undefined' && window.location.protocol === 'https:' && playUrl.startsWith('http:');
+        const shouldUseProxy = (isLive || isMixedContentSource) && playUrl.startsWith('http');
 
-        // Check if HLS is needed (m3u8 OR if we are proxying via stream, we treat it as potential HLS/TS stream for hls.js to try)
-        const isHls = playUrl.includes('.m3u8') || playUrl.includes('/api/stream');
+        if (shouldUseProxy) {
+            console.log(`Routing stream through /api/stream (Live: ${isLive}, Mixed: ${isMixedContentSource})`);
+            const currentOrigin = window.location.origin;
+            playUrl = `${currentOrigin}/api/stream?url=${encodeURIComponent(playUrl)}`;
+        }
+
+        // Mixed Content Check (Legacy/Heuristic for Error Reporting)
+        // If we didn't proxy (e.g. dev mode), this might still trigger.
+        const isMixedContent = typeof window !== 'undefined' && window.location.protocol === 'https:' && playUrl.startsWith('http:');
+
+        // Check if HLS is needed
+        // If we proxied, we can't just check for .m3u8 in playUrl string (it's encoded). 
+        // We check the ORIGINAL streamUrl logic or if it's Live (implies HLS).
+        // OR if the playUrl (proxied or not) explicitly has .m3u8 inside (e.g. encoded param).
+        const isHls = playUrl.includes('.m3u8') || (shouldUseProxy && isLive);
 
         if (isHls && Hls.isSupported()) {
             const hls = new Hls();
