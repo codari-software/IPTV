@@ -90,11 +90,14 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
             });
         } else {
             video.src = playUrl;
-            video.play().catch((e) => {
-                console.log("HTML5 Play failed", e);
-                // Don't set error here, as it might be just an autoplay block.
-                // Real errors are handled by video.onerror
-            });
+            const playPromise = video.play();
+            if (playPromise !== undefined) {
+                playPromise.catch((e) => {
+                    // AbortError is benign (happens when src changes or pause is called quickly)
+                    if (e.name === 'AbortError') return;
+                    console.log("HTML5 Play failed", e);
+                });
+            }
 
             video.onerror = () => {
                 setError("Erro ao carregar o vídeo. Pode ser bloqueio de CORS ou formato inválido.");
