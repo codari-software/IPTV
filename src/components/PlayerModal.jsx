@@ -29,6 +29,7 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
     const controlsTimeoutRef = useRef(null);
 
     const [error, setError] = useState(null);
+    const [retryCount, setRetryCount] = useState(0);
 
     // Initial Setup
     useEffect(() => {
@@ -78,6 +79,13 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
             hls.on(Hls.Events.ERROR, (event, data) => {
                 if (data.fatal) {
                     console.error("HLS Fatal", data);
+                    if (isLive) {
+                        console.log("Live stream fatal error. Restarting in 2s...");
+                        hls.destroy();
+                        setTimeout(() => setRetryCount(prev => prev + 1), 2000);
+                        return;
+                    }
+
                     if (isMixedContent) {
                         setError("Erro de Segurança: Navegador bloqueou conteúdo HTTP (Inseguro) em site HTTPS. Tente usar a versão HTTPS da sua lista.");
                     } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
@@ -100,6 +108,11 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
             }
 
             video.onerror = () => {
+                if (isLive) {
+                    console.log("Video error. Restarting in 2s...");
+                    setTimeout(() => setRetryCount(prev => prev + 1), 2000);
+                    return;
+                }
                 setError("Erro ao carregar o vídeo. Pode ser bloqueio de CORS ou formato inválido.");
             };
         }
@@ -107,7 +120,7 @@ const PlayerModal = ({ streamUrl, onClose, title, onProgress, startTime = 0, onN
         return () => {
             if (hlsRef.current) hlsRef.current.destroy();
         };
-    }, [streamUrl]);
+    }, [streamUrl, retryCount]);
 
     // Format Time
     const formatTime = (time) => {
